@@ -12,7 +12,33 @@ import { supportRouter } from "./routes/support";
 
 const app = express();
 
-app.use(cors({ origin: env.corsOrigin }));
+const allowedOrigins = env.corsOrigin
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (
+        allowedOrigins.includes(origin) ||
+        /^https:\/\/.*\.onrender\.com$/i.test(origin) ||
+        /^http:\/\/localhost:\d+$/i.test(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error("CORS origin not allowed"));
+    },
+    methods: ["GET", "POST", "PUT", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+app.options("*", cors());
 app.use(express.json({ limit: "5mb" }));
 
 app.get("/health", (_req, res) => {

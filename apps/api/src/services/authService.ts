@@ -3,7 +3,10 @@ import { pool } from "../db/client";
 import { env } from "../config/env";
 
 function normalizePhone(phone: string): string {
-  return phone.replace(/\s+/g, "").trim();
+  const trimmed = phone.trim();
+  const hasPlusPrefix = trimmed.startsWith("+");
+  const digitsOnly = trimmed.replace(/\D+/g, "");
+  return hasPlusPrefix ? `+${digitsOnly}` : digitsOnly;
 }
 
 export async function signInWithPhone(
