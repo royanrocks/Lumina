@@ -1,0 +1,185 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #242424;
+  background: #fffdf2;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #ffef9a, #fffdf2 60%);
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+.hero {
+  background: linear-gradient(135deg, #ffd700 0%, #ffe86e 100%);
+  border-radius: 20px;
+  padding: 1.2rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  color: #2d2d2d;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.7rem;
+}
+
+.hero p {
+  margin: 0.5rem 0 0;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1rem;
+  margin-top: 1rem;
+  border: 1px solid #f7e8a8;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+}
+
+.card h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1.1rem;
+}
+
+.grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+  color: #4b4b4b;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid #e7dca7;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  background: #fffef8;
+}
+
+textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #ffd700;
+  color: #2c2c2c;
+}
+
+.btn-secondary {
+  background: #f6f1d8;
+  color: #444;
+}
+
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pill.low {
+  background: #d8f5df;
+  color: #1f7a33;
+}
+
+.pill.medium {
+  background: #fff0bf;
+  color: #916b08;
+}
+
+.pill.high {
+  background: #ffe0e0;
+  color: #a11d1d;
+}
+
+.friend-list,
+.leaderboard {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.friend-item,
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #f1e6b8;
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+}
+
+.orb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.45rem;
+}
+
+.tiny {
+  font-size: 0.82rem;
+  color: #606060;
+}
+
+.notice {
+  margin-top: 0.5rem;
+  font-size: 0.88rem;
+  color: #4c4c4c;
+}
+
+.danger {
+  color: #9a1f1f;
+}
