@@ -341,6 +341,118 @@ button:active {
   grid-template-columns: 1fr 1fr;
 }
 
+.mood-score {
+  margin-top: 4px;
+}
+
+.mood-score .score-label {
+  display: flex;
+  justify-content: space-between;
+  color: #715e46;
+  font-size: 0.82rem;
+  margin-bottom: 5px;
+}
+
+.mood-score input[type="range"] {
+  width: 100%;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5da9e9 0%, #f4a261 50%, #ffd700 100%);
+  border: none;
+  padding: 0;
+}
+
+.mood-score input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 2px solid #d9be8a;
+}
+
+.mood-score input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 2px solid #d9be8a;
+}
+
+.history-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.history-tab {
+  border: 1px solid #eedfc8;
+  border-radius: 12px;
+  background: #fffaf1;
+  color: #8a7358;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.history-tab.active {
+  background: #ffe8b5;
+  color: #3d2c16;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #f2e4cf;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #fffefb;
+}
+
+.history-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.notification-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.notification-item {
+  border: 1px solid #f2e4cf;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #fffefb;
+}
+
+.notification-item.unread {
+  border-color: #ffd978;
+  background: #fff8e6;
+}
+
+.notification-time {
+  margin: 3px 0 0;
+  font-size: 0.75rem;
+  color: #8f7a5f;
+}
+
 @media (max-width: 380px) {
   .split {
     grid-template-columns: 1fr;

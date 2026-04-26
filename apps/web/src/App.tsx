@@ -2,10 +2,13 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 import "./styles.css";
 
 type AuthResponse = { token: string };
+type TimeView = "day" | "week" | "month";
+type Screen = "checkin" | "connections" | "discover" | "quotes" | "profile";
 
 type Profile = {
   name: string | null;
-  birth_date: string | null;
+  birthday: string | null;
+  age: number | null;
   location: string | null;
   education: string | null;
   gender: string | null;
@@ -41,13 +44,26 @@ type Checkin = {
   quote: string;
 };
 
-type Screen = "checkin" | "connections" | "discover" | "quotes" | "profile";
+type MoodHistoryItem = {
+  label: string;
+  score: number;
+  color: string;
+};
+
+type NotificationItem = {
+  id: string;
+  senderName: string;
+  type: string;
+  createdAt: string;
+  read: boolean;
+};
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const emptyProfile: Profile = {
   name: "",
-  birth_date: "",
+  birthday: "",
+  age: null,
   location: "",
   education: "",
   gender: "",
@@ -79,11 +95,14 @@ function toBase64(file: File): Promise<string> {
   });
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString();
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("checkin");
   const [token, setToken] = useState("");
   const [phone, setPhone] = useState("+15550001111");
-  const [otp, setOtp] = useState("123456");
   const [notice, setNotice] = useState("Welcome.");
 
   const [profile, setProfile] = useState<Profile>(emptyProfile);
@@ -91,14 +110,22 @@ function App() {
   const [imageText, setImageText] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
   const [lovedDay, setLovedDay] = useState(true);
+  const [moodScore, setMoodScore] = useState(55);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [pulseResult, setPulseResult] = useState<Checkin | null>(null);
+  const [historyView, setHistoryView] = useState<TimeView>("day");
+  const [history, setHistory] = useState<Record<TimeView, MoodHistoryItem[]>>({
+    day: [],
+    week: [],
+    month: []
+  });
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendPhone, setFriendPhone] = useState("");
   const [friendName, setFriendName] = useState("");
   const [discovery, setDiscovery] = useState<DiscoveryRow[]>([]);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const contactInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,31 +140,16 @@ function App() {
     return nextHeaders;
   }, [token]);
 
-  async function requestOtp(event: FormEvent) {
+  async function signInWithPhone(event: FormEvent) {
     event.preventDefault();
-    const response = await fetch(`${apiBase}/auth/request-otp`, {
+    const response = await fetch(`${apiBase}/auth/phone-signin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone })
     });
-    const payload = (await response.json()) as { devOtp?: string; error?: string };
-    if (!response.ok) {
-      setNotice(payload.error ?? "Could not send your code.");
-      return;
-    }
-    setNotice(`Code sent. For this demo, use ${payload.devOtp}.`);
-  }
-
-  async function verifyOtp(event: FormEvent) {
-    event.preventDefault();
-    const response = await fetch(`${apiBase}/auth/verify-otp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, otp })
-    });
     const payload = (await response.json()) as AuthResponse & { error?: string };
     if (!response.ok) {
-      setNotice(payload.error ?? "That code did not match.");
+      setNotice(payload.error ?? "Could not continue with that phone number.");
       return;
     }
     setToken(payload.token);
@@ -146,14 +158,16 @@ function App() {
 
   async function loadAll() {
     if (!token) return;
-    const [profileRes, friendsRes, discoveryRes, recRes] = await Promise.all([
+    const [profileRes, friendsRes, discoveryRes, recRes, historyRes, notificationsRes] = await Promise.all([
       fetch(`${apiBase}/profile/me`, { headers }),
       fetch(`${apiBase}/social/friends`, { headers }),
       fetch(`${apiBase}/social/discovery`, { headers }),
-      fetch(`${apiBase}/support/recommendation`, { headers })
+      fetch(`${apiBase}/support/recommendation`, { headers }),
+      fetch(`${apiBase}/pulse/history`, { headers }),
+      fetch(`${apiBase}/social/notifications`, { headers })
     ]);
 
-    if (!profileRes.ok || !friendsRes.ok || !discoveryRes.ok || !recRes.ok) {
+    if (!profileRes.ok || !friendsRes.ok || !discoveryRes.ok || !recRes.ok || !historyRes.ok || !notificationsRes.ok) {
       setNotice("Something did not load. Please try again.");
       return;
     }
@@ -162,11 +176,31 @@ function App() {
     const friendsData = (await friendsRes.json()) as { friends: Friend[] };
     const discoveryData = (await discoveryRes.json()) as { discovery: DiscoveryRow[] };
     const recData = (await recRes.json()) as { recommendation: Recommendation };
+    const historyData = (await historyRes.json()) as {
+      day: Array<{ date: string; score: number; color: string }>;
+      week: Array<{ label: string; score: number; color: string }>;
+      month: Array<{ label: string; score: number; color: string }>;
+    };
+    const notificationsData = (await notificationsRes.json()) as { notifications: NotificationItem[] };
 
     setProfile({ ...emptyProfile, ...profileData.profile });
     setFriends(friendsData.friends);
     setDiscovery(discoveryData.discovery);
     setRecommendation(recData.recommendation);
+    setHistory({
+      day: historyData.day.map((item) => ({ label: item.date, score: item.score, color: item.color })),
+      week: historyData.week,
+      month: historyData.month
+    });
+    setNotifications(notificationsData.notifications);
+  }
+
+  async function markNotificationsRead() {
+    await fetch(`${apiBase}/social/notifications/read-all`, {
+      method: "POST",
+      headers
+    });
+    await loadAll();
   }
 
   async function saveProfile(event: FormEvent) {
@@ -176,7 +210,7 @@ function App() {
       headers,
       body: JSON.stringify({
         ...profile,
-        birthDate: profile.birth_date,
+        birthDate: profile.birthday,
         personalityType: profile.personality_type
       })
     });
@@ -197,7 +231,8 @@ function App() {
       body: JSON.stringify({
         journalText,
         imageText: imageText || undefined,
-        lovedDay
+        lovedDay,
+        moodScore
       })
     });
     const payload = (await response.json()) as { checkin?: Checkin; error?: string };
@@ -346,21 +381,12 @@ function App() {
 
         {!token ? (
           <section className="page auth-page">
-            <h2>Sign in</h2>
-            <p className="subtle">Enter your phone to continue.</p>
-            <form onSubmit={requestOtp} className="stack">
+            <h2>Welcome</h2>
+            <p className="subtle">Use your phone number to create or open your account.</p>
+            <form onSubmit={signInWithPhone} className="stack">
               <label>
                 Phone
                 <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
-              </label>
-              <button type="submit" className="primary">
-                Send code
-              </button>
-            </form>
-            <form onSubmit={verifyOtp} className="stack">
-              <label>
-                Verification code
-                <input value={otp} onChange={(e) => setOtp(e.target.value)} required />
               </label>
               <button type="submit" className="primary">
                 Continue
@@ -375,6 +401,16 @@ function App() {
                   <h2>Daily Check-in</h2>
                   <p className="subtle">Write what mattered today, then reflect.</p>
                   <form onSubmit={submitPulse} className="stack">
+                    <label>
+                      Mood score ({moodScore}/100)
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={moodScore}
+                        onChange={(e) => setMoodScore(Number(e.target.value))}
+                      />
+                    </label>
                     <label>
                       Journal
                       <textarea
@@ -396,7 +432,11 @@ function App() {
                         Scan notebook page
                       </button>
                     ) : (
-                      <div className="scan-flow">
+                      <div className="flow-card">
+                        <div className="flow-head">
+                          <p className="flow-title">Notebook scan</p>
+                          <p className="flow-sub">Choose a photo first, then review extracted text.</p>
+                        </div>
                         <button
                           type="button"
                           className="secondary"
@@ -425,7 +465,7 @@ function App() {
                             />
                           </label>
                         ) : (
-                          <p className="subtle">After you upload, the scanned text will appear here.</p>
+                          <p className="subtle">After upload, scanned text appears here.</p>
                         )}
                       </div>
                     )}
@@ -440,11 +480,41 @@ function App() {
                   {pulseResult ? (
                     <article className="card">
                       <p className="score">{pulseResult.fulfillment_score}/100</p>
-                      <p className={`pill ${pulseResult.risk_band}`}>{pulseResult.risk_band} risk</p>
+                      <p className={`chip ${pulseResult.risk_band}`}>{pulseResult.risk_band} risk</p>
                       <p>{pulseResult.sentiment_summary}</p>
                       <p className="quote">"{pulseResult.quote}"</p>
                     </article>
                   ) : null}
+
+                  <article className="card">
+                    <div className="row">
+                      <h3>Mood Timeline</h3>
+                      <div className="row-right">
+                        {(["day", "week", "month"] as TimeView[]).map((view) => (
+                          <button
+                            key={view}
+                            type="button"
+                            className={historyView === view ? "primary compact" : "secondary compact"}
+                            onClick={() => setHistoryView(view)}
+                          >
+                            {view}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="list">
+                      {history[historyView].map((entry) => (
+                        <article className="row" key={`${historyView}-${entry.label}`}>
+                          <p className="name">
+                            <span className="orb" style={{ backgroundColor: entry.color }} />
+                            {entry.label}
+                          </p>
+                          <span className="badge">{entry.score}</span>
+                        </article>
+                      ))}
+                      {history[historyView].length === 0 ? <p className="subtle">No entries yet.</p> : null}
+                    </div>
+                  </article>
                 </>
               ) : null}
 
@@ -472,11 +542,7 @@ function App() {
                     <button type="submit" className="primary">
                       Add friend
                     </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => contactInputRef.current?.click()}
-                    >
+                    <button type="button" className="secondary" onClick={() => contactInputRef.current?.click()}>
                       Import contact card (.vcf)
                     </button>
                     <input
@@ -495,7 +561,7 @@ function App() {
                             <span className="orb" style={{ backgroundColor: friend.mood_color }} />
                             {friend.name}
                           </p>
-                          <p className="subtle">{moodLabel(friend.latest_score)}</p>
+                          <p className="row-sub">{moodLabel(friend.latest_score)}</p>
                         </div>
                         <button type="button" className="secondary" onClick={() => sendNudge(friend.id)}>
                           Nudge
@@ -519,13 +585,9 @@ function App() {
                           <span className="orb" style={{ backgroundColor: row.mood_color }} />
                           {row.name}
                         </p>
-                        <div className="leader-right">
+                        <div className="row-right">
                           <strong>{row.altruism_score}</strong>
-                          <button
-                            type="button"
-                            className="secondary compact"
-                            onClick={() => sendDiscoveryThumbsUp(row.id)}
-                          >
+                          <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
                             👍 Daily
                           </button>
                         </div>
@@ -553,6 +615,29 @@ function App() {
                   ) : (
                     <p className="subtle">Complete a check-in to unlock this page.</p>
                   )}
+
+                  <article className="card">
+                    <div className="row">
+                      <h3>Thumbs-up notifications</h3>
+                      <button type="button" className="secondary compact" onClick={markNotificationsRead}>
+                        Mark all read
+                      </button>
+                    </div>
+                    <div className="list">
+                      {notifications.map((n) => (
+                        <article key={n.id} className="row">
+                          <div>
+                            <p className="name">
+                              {n.senderName} sent a {n.type === "discovery_nudge" ? "discovery" : "friend"} thumbs-up
+                            </p>
+                            <p className="row-sub">{formatTime(n.createdAt)}</p>
+                          </div>
+                          {!n.read ? <span className="badge">new</span> : null}
+                        </article>
+                      ))}
+                      {notifications.length === 0 ? <p className="subtle">No notifications yet.</p> : null}
+                    </div>
+                  </article>
                 </>
               ) : null}
 
@@ -569,10 +654,11 @@ function App() {
                       Birthday
                       <input
                         type="date"
-                        value={profile.birth_date ?? ""}
-                        onChange={(e) => setProfile({ ...profile, birth_date: e.target.value })}
+                        value={profile.birthday ?? ""}
+                        onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
                       />
                     </label>
+                    <p className="subtle">Age: {profile.age ?? "—"}</p>
                     <label>
                       Location
                       <input

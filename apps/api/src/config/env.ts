@@ -15,5 +15,6 @@ export const env = {
   jwtSecret: required("JWT_SECRET"),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   openAiApiKey: process.env.OPENAI_API_KEY,
-  redisUrl: process.env.REDIS_URL
+  redisUrl: process.env.REDIS_URL,
+  redisToken: process.env.REDIS_TOKEN
 };

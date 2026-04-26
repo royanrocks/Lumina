@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { query } from "../db/client";
 import { requireAuth } from "../middleware/auth";
 import { getMoodColorFromScore, hasTextUnlock } from "../services/socialService";
+import { publishNudgeNotification } from "../services/notificationService";
 
 type FriendRow = {
   id: string;
@@ -18,6 +19,24 @@ type DiscoveryRow = {
 
 type DiscoveryNudgeRow = {
   receiver_id: string;
+};
+
+type FriendProfileRow = {
+  id: string;
+  name: string | null;
+  phone: string;
+  fulfillment_score: number | null;
+  mood_color: string | null;
+  created_at: string;
+};
+
+type NotificationRow = {
+  id: string;
+  sender_name: string | null;
+  sender_id: string;
+  kind: string;
+  created_at: string;
+  read_at: string | null;
 };
 
 export const socialRouter = Router();
@@ -57,6 +76,61 @@ socialRouter.get("/friends", requireAuth, async (req: Request, res: Response) =>
       latest_score: r.fulfillment_score === null ? null : Number(r.fulfillment_score),
       mood_color: getMoodColorFromScore(r.fulfillment_score === null ? null : Number(r.fulfillment_score))
     }))
+  });
+});
+
+socialRouter.get("/friends/:friendId/profile", requireAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const userId = req.user.userId;
+  const friendId = req.params.friendId;
+  const relation = await query<{ one: number }>(
+    `SELECT 1 AS one FROM friend_links WHERE user_id = $1 AND friend_id = $2`,
+    [userId, friendId]
+  );
+  if ((relation.rowCount ?? 0) === 0) {
+    return res.status(403).json({ error: "This profile is only visible for connected friends." });
+  }
+
+  const profileResult = await query<FriendProfileRow>(
+    `
+      SELECT
+        u.id,
+        u.name,
+        u.phone,
+        p.fulfillment_score,
+        p.mood_color,
+        p.created_at
+      FROM users u
+      LEFT JOIN LATERAL (
+        SELECT fulfillment_score, mood_color, created_at
+        FROM pulse_entries
+        WHERE user_id = u.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) p ON TRUE
+      WHERE u.id = $1
+      LIMIT 1
+    `,
+    [friendId]
+  );
+  if ((profileResult.rowCount ?? 0) === 0) {
+    return res.status(404).json({ error: "Friend not found." });
+  }
+
+  const row = profileResult.rows[0];
+  return res.json({
+    profile: {
+      id: row.id,
+      name: row.name ?? "Friend",
+      phone: row.phone,
+      latestMood: {
+        score: row.fulfillment_score === null ? null : Number(row.fulfillment_score),
+        color: row.mood_color ?? getMoodColorFromScore(row.fulfillment_score === null ? null : Number(row.fulfillment_score)),
+        capturedAt: row.created_at ?? null
+      }
+    }
   });
 });
 
@@ -132,6 +206,7 @@ socialRouter.post("/nudge", requireAuth, async (req: Request, res: Response) => 
     [senderId, friendId]
   );
 
+  await publishNudgeNotification(senderId, friendId, "friend");
   return res.status(201).json({ message: "Nudge sent." });
 });
 
@@ -220,5 +295,84 @@ socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Res
     `,
     [senderId, receiverId]
   );
+  await publishNudgeNotification(senderId, receiverId, "discovery");
   return res.status(201).json({ message: "Daily thumbs-up sent." });
+});
+
+socialRouter.get("/notifications", requireAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const userId = req.user.userId;
+  const result = await query<NotificationRow>(
+    `
+      SELECT
+        n.id,
+        n.sender_id,
+        n.kind,
+        n.created_at,
+        n.read_at,
+        u.name AS sender_name
+      FROM notifications n
+      JOIN users u ON u.id = n.sender_id
+      WHERE n.receiver_id = $1
+      ORDER BY n.created_at DESC
+      LIMIT 50
+    `,
+    [userId]
+  );
+
+  return res.json({
+    notifications: result.rows.map((row) => ({
+      id: row.id,
+      senderId: row.sender_id,
+      senderName: row.sender_name ?? "Someone",
+      type: row.kind,
+      createdAt: row.created_at,
+      read: Boolean(row.read_at)
+    }))
+  });
+});
+
+socialRouter.post("/notifications/read-all", requireAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  await query(
+    `
+      UPDATE notifications
+      SET read_at = NOW()
+      WHERE receiver_id = $1
+        AND read_at IS NULL
+    `,
+    [req.user.userId]
+  );
+  return res.json({ success: true });
+});
+
+socialRouter.get("/my-mood", requireAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const result = await query<{ fulfillment_score: number; mood_color: string; created_at: string }>(
+    `
+      SELECT fulfillment_score, mood_color, created_at
+      FROM pulse_entries
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [req.user.userId]
+  );
+  if ((result.rowCount ?? 0) === 0) {
+    return res.json({ mood: null });
+  }
+  const row = result.rows[0];
+  return res.json({
+    mood: {
+      score: Number(row.fulfillment_score),
+      color: row.mood_color ?? getMoodColorFromScore(Number(row.fulfillment_score)),
+      capturedAt: row.created_at
+    }
+  });
 });
