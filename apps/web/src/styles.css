@@ -453,6 +453,27 @@ button:active {
   color: #8f7a5f;
 }
 
+.discover-menu {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.discover-menu button {
+  flex: 1;
+}
+
+.calendar-select {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.history-note {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: #7d6852;
+}
+
 @media (max-width: 380px) {
   .split {
     grid-template-columns: 1fr;

@@ -3,7 +3,7 @@ import "./styles.css";
 
 type AuthResponse = { token: string };
 type TimeView = "day" | "week" | "month";
-type Screen = "checkin" | "connections" | "discover" | "quotes" | "profile";
+type Screen = "checkin" | "quotes" | "calendar" | "discover" | "profile";
 
 type Profile = {
   name: string | null;
@@ -48,6 +48,7 @@ type MoodHistoryItem = {
   label: string;
   score: number;
   color: string;
+  note: string | null;
 };
 
 type NotificationItem = {
@@ -72,9 +73,9 @@ const emptyProfile: Profile = {
 
 const navItems: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "checkin", label: "Check-in", icon: "●" },
-  { id: "connections", label: "Silent", icon: "●" },
-  { id: "discover", label: "Discover", icon: "●" },
   { id: "quotes", label: "Quotes", icon: "●" },
+  { id: "calendar", label: "Calendar", icon: "●" },
+  { id: "discover", label: "Discover", icon: "●" },
   { id: "profile", label: "Profile", icon: "●" }
 ];
 
@@ -119,6 +120,7 @@ function App() {
     week: [],
     month: []
   });
+  const [discoverMenu, setDiscoverMenu] = useState<"leaderboard" | "friends">("leaderboard");
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendPhone, setFriendPhone] = useState("");
@@ -177,9 +179,9 @@ function App() {
     const discoveryData = (await discoveryRes.json()) as { discovery: DiscoveryRow[] };
     const recData = (await recRes.json()) as { recommendation: Recommendation };
     const historyData = (await historyRes.json()) as {
-      day: Array<{ date: string; score: number; color: string }>;
-      week: Array<{ label: string; score: number; color: string }>;
-      month: Array<{ label: string; score: number; color: string }>;
+      day: Array<{ date: string; score: number; color: string; note: string | null }>;
+      week: Array<{ label: string; score: number; color: string; note: string | null }>;
+      month: Array<{ label: string; score: number; color: string; note: string | null }>;
     };
     const notificationsData = (await notificationsRes.json()) as { notifications: NotificationItem[] };
 
@@ -188,7 +190,7 @@ function App() {
     setDiscovery(discoveryData.discovery);
     setRecommendation(recData.recommendation);
     setHistory({
-      day: historyData.day.map((item) => ({ label: item.date, score: item.score, color: item.color })),
+      day: historyData.day.map((item) => ({ label: item.date, score: item.score, color: item.color, note: item.note })),
       week: historyData.week,
       month: historyData.month
     });
@@ -518,82 +520,97 @@ function App() {
                 </>
               ) : null}
 
-              {screen === "connections" ? (
-                <>
-                  <h2>Silent Connection</h2>
-                  <p className="subtle">Show support without pressure.</p>
-                  <form onSubmit={addFriend} className="stack">
-                    <label>
-                      Friend name
-                      <input
-                        value={friendName}
-                        onChange={(e) => setFriendName(e.target.value)}
-                        placeholder="e.g., Maya"
-                      />
-                    </label>
-                    <label>
-                      Add friend by phone
-                      <input
-                        value={friendPhone}
-                        onChange={(e) => setFriendPhone(e.target.value)}
-                        placeholder="+15550001234"
-                      />
-                    </label>
-                    <button type="submit" className="primary">
-                      Add friend
-                    </button>
-                    <button type="button" className="secondary" onClick={() => contactInputRef.current?.click()}>
-                      Import contact card (.vcf)
-                    </button>
-                    <input
-                      ref={contactInputRef}
-                      type="file"
-                      accept=".vcf,text/vcard"
-                      onChange={importContact}
-                      className="hidden"
-                    />
-                  </form>
-                  <div className="list">
-                    {friends.map((friend) => (
-                      <article key={friend.id} className="row">
-                        <div>
-                          <p className="name">
-                            <span className="orb" style={{ backgroundColor: friend.mood_color }} />
-                            {friend.name}
-                          </p>
-                          <p className="row-sub">{moodLabel(friend.latest_score)}</p>
-                        </div>
-                        <button type="button" className="secondary" onClick={() => sendNudge(friend.id)}>
-                          Nudge
-                        </button>
-                      </article>
-                    ))}
-                    {friends.length === 0 ? <p className="subtle">No friends yet.</p> : null}
-                  </div>
-                </>
-              ) : null}
-
               {screen === "discover" ? (
                 <>
                   <h2>Global Discovery</h2>
-                  <p className="subtle">A leaderboard of quiet support.</p>
-                  <div className="list">
-                    {discovery.map((row, index) => (
-                      <article key={row.id} className="row">
-                        <p className="name">
-                          #{index + 1}
-                          <span className="orb" style={{ backgroundColor: row.mood_color }} />
-                          {row.name}
-                        </p>
-                        <div className="row-right">
-                          <strong>{row.altruism_score}</strong>
-                          <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
-                            👍 Daily
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                  <p className="subtle">Discover community mood and support your circle.</p>
+                  <div className="history-tabs">
+                    <button
+                      type="button"
+                      className={`history-tab ${discoverMenu === "leaderboard" ? "active" : ""}`}
+                      onClick={() => setDiscoverMenu("leaderboard")}
+                    >
+                      Leaderboard
+                    </button>
+                    <button
+                      type="button"
+                      className={`history-tab ${discoverMenu === "friends" ? "active" : ""}`}
+                      onClick={() => setDiscoverMenu("friends")}
+                    >
+                      Add Friend
+                    </button>
                   </div>
+
+                  {discoverMenu === "leaderboard" ? (
+                    <div className="list">
+                      {discovery.map((row, index) => (
+                        <article key={row.id} className="row">
+                          <p className="name">
+                            #{index + 1}
+                            <span className="orb" style={{ backgroundColor: row.mood_color }} />
+                            {row.name}
+                          </p>
+                          <div className="row-right">
+                            <strong>{row.altruism_score}</strong>
+                            <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
+                              👍 Daily
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <form onSubmit={addFriend} className="stack">
+                        <label>
+                          Friend name
+                          <input
+                            value={friendName}
+                            onChange={(e) => setFriendName(e.target.value)}
+                            placeholder="e.g., Maya"
+                          />
+                        </label>
+                        <label>
+                          Add friend by phone
+                          <input
+                            value={friendPhone}
+                            onChange={(e) => setFriendPhone(e.target.value)}
+                            placeholder="+15550001234"
+                          />
+                        </label>
+                        <button type="submit" className="primary">
+                          Add friend
+                        </button>
+                        <button type="button" className="secondary" onClick={() => contactInputRef.current?.click()}>
+                          Import contact card (.vcf)
+                        </button>
+                        <input
+                          ref={contactInputRef}
+                          type="file"
+                          accept=".vcf,text/vcard"
+                          onChange={importContact}
+                          className="hidden"
+                        />
+                      </form>
+                      <div className="list">
+                        {friends.map((friend) => (
+                          <article key={friend.id} className="row">
+                            <div>
+                              <p className="name">
+                                <span className="orb" style={{ backgroundColor: friend.mood_color }} />
+                                {friend.name}
+                              </p>
+                              <p className="row-sub">{moodLabel(friend.latest_score)}</p>
+                            </div>
+                            <button type="button" className="secondary" onClick={() => sendNudge(friend.id)}>
+                              Nudge
+                            </button>
+                          </article>
+                        ))}
+                        {friends.length === 0 ? <p className="subtle">No friends yet.</p> : null}
+                      </div>
+                    </>
+                  )}
                 </>
               ) : null}
 
@@ -638,6 +655,40 @@ function App() {
                       {notifications.length === 0 ? <p className="subtle">No notifications yet.</p> : null}
                     </div>
                   </article>
+                </>
+              ) : null}
+
+              {screen === "calendar" ? (
+                <>
+                  <h2>Mood Calendar</h2>
+                  <p className="subtle">Tap between day, week, and month to see color + journal history.</p>
+                  <div className="history-tabs">
+                    {(["day", "week", "month"] as TimeView[]).map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        className={`history-tab ${historyView === view ? "active" : ""}`}
+                        onClick={() => setHistoryView(view)}
+                      >
+                        {view}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="history-list">
+                    {history[historyView].map((entry) => (
+                      <article className="history-item" key={`${historyView}-${entry.label}`}>
+                        <div className="history-left">
+                          <span className="history-dot" style={{ backgroundColor: entry.color }} />
+                          <div>
+                            <p className="name">{entry.label}</p>
+                            <p className="row-sub">{entry.note || "No journal note captured."}</p>
+                          </div>
+                        </div>
+                        <span className="badge">{entry.score}</span>
+                      </article>
+                    ))}
+                    {history[historyView].length === 0 ? <p className="subtle">No entries yet.</p> : null}
+                  </div>
                 </>
               ) : null}
 
