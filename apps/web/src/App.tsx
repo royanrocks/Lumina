@@ -1,9 +1,7 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 
-type AuthResponse = {
-  token: string;
-};
+type AuthResponse = { token: string };
 
 type Profile = {
   name: string | null;
@@ -37,13 +35,9 @@ type Recommendation = {
 };
 
 type Checkin = {
-  id: string;
   fulfillment_score: number;
   risk_band: "low" | "medium" | "high";
   sentiment_summary: string;
-  love_today: boolean;
-  mood_color: string;
-  created_at: string;
   quote: string;
 };
 
@@ -60,12 +54,20 @@ const emptyProfile: Profile = {
   personality_type: ""
 };
 
+const navItems: Array<{ id: Screen; label: string; icon: string }> = [
+  { id: "checkin", label: "Check-in", icon: "●" },
+  { id: "connections", label: "Silent", icon: "●" },
+  { id: "discover", label: "Discover", icon: "●" },
+  { id: "quotes", label: "Quotes", icon: "●" },
+  { id: "profile", label: "Profile", icon: "●" }
+];
+
 function moodLabel(score: number | null) {
-  if (score === null || score === undefined) return "No pulse yet";
+  if (score === null || score === undefined) return "No recent pulse";
   if (score >= 80) return "Radiant";
   if (score >= 60) return "Steady";
   if (score >= 40) return "Cloudy";
-  return "Stormy";
+  return "Heavy";
 }
 
 function toBase64(file: File): Promise<string> {
@@ -79,52 +81,51 @@ function toBase64(file: File): Promise<string> {
 
 function App() {
   const [screen, setScreen] = useState<Screen>("checkin");
-  const [token, setToken] = useState<string>("");
+  const [token, setToken] = useState("");
   const [phone, setPhone] = useState("+15550001111");
   const [otp, setOtp] = useState("123456");
+  const [notice, setNotice] = useState("Welcome.");
+
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [journalText, setJournalText] = useState("");
   const [imageText, setImageText] = useState("");
-  const [photoPreview, setPhotoPreview] = useState<string>("");
+  const [photoPreview, setPhotoPreview] = useState("");
   const [lovedDay, setLovedDay] = useState(true);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const [pulseResult, setPulseResult] = useState<Checkin | null>(null);
+
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendPhone, setFriendPhone] = useState("");
   const [discovery, setDiscovery] = useState<DiscoveryRow[]>([]);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
-  const [friendPhone, setFriendPhone] = useState("");
-  const [status, setStatus] = useState("Welcome to Lumina.");
-  const [ocrBusy, setOcrBusy] = useState(false);
+
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const headers = useMemo<Record<string, string>>(() => {
     const nextHeaders: Record<string, string> = {
       "Content-Type": "application/json"
     };
-    if (token) {
-      nextHeaders.Authorization = `Bearer ${token}`;
-    }
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
     return nextHeaders;
   }, [token]);
 
   async function requestOtp(event: FormEvent) {
     event.preventDefault();
-    setStatus("Requesting OTP...");
     const response = await fetch(`${apiBase}/auth/request-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone })
     });
-    const payload = await response.json();
+    const payload = (await response.json()) as { devOtp?: string; error?: string };
     if (!response.ok) {
-      setStatus(payload.error ?? "Failed to request OTP.");
+      setNotice(payload.error ?? "Could not send your code.");
       return;
     }
-    setStatus(`OTP generated. Dev code: ${payload.devOtp}`);
+    setNotice(`Code sent. For this demo, use ${payload.devOtp}.`);
   }
 
   async function verifyOtp(event: FormEvent) {
     event.preventDefault();
-    setStatus("Verifying OTP...");
     const response = await fetch(`${apiBase}/auth/verify-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,11 +133,11 @@ function App() {
     });
     const payload = (await response.json()) as AuthResponse & { error?: string };
     if (!response.ok) {
-      setStatus(payload.error ?? "OTP verification failed.");
+      setNotice(payload.error ?? "That code did not match.");
       return;
     }
     setToken(payload.token);
-    setStatus("Authenticated. Your space is loading.");
+    setNotice("You are in.");
   }
 
   async function loadAll() {
@@ -149,7 +150,7 @@ function App() {
     ]);
 
     if (!profileRes.ok || !friendsRes.ok || !discoveryRes.ok || !recRes.ok) {
-      setStatus("Unable to load data.");
+      setNotice("Something did not load. Please try again.");
       return;
     }
 
@@ -158,14 +159,10 @@ function App() {
     const discoveryData = (await discoveryRes.json()) as { discovery: DiscoveryRow[] };
     const recData = (await recRes.json()) as { recommendation: Recommendation };
 
-    setProfile({
-      ...emptyProfile,
-      ...profileData.profile
-    });
+    setProfile({ ...emptyProfile, ...profileData.profile });
     setFriends(friendsData.friends);
     setDiscovery(discoveryData.discovery);
     setRecommendation(recData.recommendation);
-    setStatus("Synced.");
   }
 
   async function saveProfile(event: FormEvent) {
@@ -180,14 +177,11 @@ function App() {
     });
     const payload = await response.json();
     if (!response.ok) {
-      setStatus(payload.error ?? "Failed to save profile.");
+      setNotice(payload.error ?? "Could not update profile right now.");
       return;
     }
-    setProfile({
-      ...emptyProfile,
-      ...(payload.profile as Profile)
-    });
-    setStatus("Profile updated.");
+    setProfile({ ...emptyProfile, ...(payload.profile as Profile) });
+    setNotice("Profile saved.");
   }
 
   async function submitPulse(event: FormEvent) {
@@ -201,13 +195,13 @@ function App() {
         lovedDay
       })
     });
-    const payload = await response.json();
+    const payload = (await response.json()) as { checkin?: Checkin; error?: string };
     if (!response.ok) {
-      setStatus(payload.error ?? "Pulse check-in failed.");
+      setNotice(payload.error ?? "Your check-in could not be saved.");
       return;
     }
-    setPulseResult(payload.checkin as Checkin);
-    setStatus("Pulse check-in complete.");
+    setPulseResult(payload.checkin ?? null);
+    setNotice("Check-in saved.");
     await loadAll();
   }
 
@@ -218,13 +212,13 @@ function App() {
       headers,
       body: JSON.stringify({ phone: friendPhone })
     });
-    const payload = await response.json();
+    const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setStatus(payload.error ?? "Unable to add friend.");
+      setNotice(payload.error ?? "Could not add this number.");
       return;
     }
-    setStatus("Friend added.");
     setFriendPhone("");
+    setNotice("Friend added.");
     await loadAll();
   }
 
@@ -234,39 +228,36 @@ function App() {
       headers,
       body: JSON.stringify({ friendId })
     });
-    const payload = await response.json();
+    const payload = (await response.json()) as { message?: string; error?: string };
     if (!response.ok) {
-      setStatus(payload.error ?? "Unable to send nudge.");
+      setNotice(payload.error ?? "Could not send support right now.");
       return;
     }
-    setStatus(payload.message || "Nudge sent.");
+    setNotice(payload.message ?? "Support sent.");
     await loadAll();
   }
 
-  async function handlePhotoSelected(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setStatus("Processing notebook photo...");
     setOcrBusy(true);
     try {
       const base64 = await toBase64(file);
       setPhotoPreview(base64);
-
       const response = await fetch(`${apiBase}/pulse/ocr`, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          imageBase64: base64
-        })
+        body: JSON.stringify({ imageBase64: base64 })
       });
       const payload = (await response.json()) as { text?: string; error?: string };
       if (!response.ok) {
-        setStatus(payload.error ?? "Failed to extract notebook text.");
+        setNotice(payload.error ?? "Could not read that photo.");
         return;
       }
-      setImageText((payload.text ?? "").trim());
-      setStatus(payload.text ? "Notebook scanned. You can edit extracted text." : "No text found. Try a clearer photo.");
+      const extracted = (payload.text ?? "").trim();
+      setImageText(extracted);
+      setNotice(extracted ? "Notebook text added." : "No text found. Try another angle.");
     } finally {
       setOcrBusy(false);
       event.target.value = "";
@@ -274,129 +265,100 @@ function App() {
   }
 
   useEffect(() => {
-    loadAll().catch(() => setStatus("Unable to load data."));
-    // Refresh app data once authenticated.
+    loadAll().catch(() => setNotice("Something did not load. Please try again."));
+    // Reload app data after auth.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const navItems: Array<{ id: Screen; label: string; icon: string }> = [
-    { id: "checkin", label: "Check-in", icon: "☀️" },
-    { id: "connections", label: "Silent", icon: "💛" },
-    { id: "discover", label: "Discovery", icon: "🌍" },
-    { id: "quotes", label: "Quotes", icon: "📖" },
-    { id: "profile", label: "Profile", icon: "👤" }
-  ];
-
-  const highlightScore = pulseResult?.fulfillment_score ?? friends[0]?.latest_score ?? null;
-
   return (
-    <main className="mobile-shell">
-      <div className="phone-frame">
-        <header className="top-hero">
+    <main className="app-shell">
+      <div className="app-surface">
+        <header className="app-header">
           <div>
             <h1>Lumina</h1>
-            <p>Bring light to your feelings.</p>
+            <p>Simple, private emotional check-ins.</p>
           </div>
-          <div className="hero-orb" style={{ backgroundColor: highlightScore === null ? "#FFEFAE" : pulseResult?.mood_color ?? "#FFD700" }} />
+          <span className="header-orb" />
         </header>
 
         {!token ? (
-          <section className="screen-card auth-card">
-            <img
-              className="artwork"
-              src="https://images.unsplash.com/photo-1490730141103-6cac27aaab94?auto=format&fit=crop&w=900&q=80"
-              alt="Sunrise and hopeful sky"
-            />
-            <h2>Welcome in</h2>
-            <p className="muted">Phone login keeps onboarding simple and low-pressure.</p>
-            <form onSubmit={requestOtp} className="form-stack">
+          <section className="page auth-page">
+            <h2>Sign in</h2>
+            <p className="subtle">Enter your phone to continue.</p>
+            <form onSubmit={requestOtp} className="stack">
               <label>
-                Phone Number
+                Phone
                 <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
               </label>
-              <button type="submit" className="primary-btn">
-                Request OTP
+              <button type="submit" className="primary">
+                Send code
               </button>
             </form>
-            <form onSubmit={verifyOtp} className="form-stack">
+            <form onSubmit={verifyOtp} className="stack">
               <label>
-                OTP
+                Verification code
                 <input value={otp} onChange={(e) => setOtp(e.target.value)} required />
               </label>
-              <button type="submit" className="primary-btn">
-                Enter Lumina
+              <button type="submit" className="primary">
+                Continue
               </button>
             </form>
           </section>
         ) : (
           <>
-            <section className="screen-card">
+            <section className="page">
               {screen === "checkin" ? (
                 <>
-                  <img
-                    className="artwork"
-                    src="https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=900&q=80"
-                    alt="Notebook by morning light"
-                  />
                   <h2>Daily Check-in</h2>
-                  <p className="muted">Type freely or scan your notebook page with camera OCR.</p>
-
-                  <form onSubmit={submitPulse} className="form-stack">
+                  <p className="subtle">Write what mattered today, then reflect.</p>
+                  <form onSubmit={submitPulse} className="stack">
                     <label>
                       Journal
                       <textarea
                         rows={5}
                         value={journalText}
                         onChange={(e) => setJournalText(e.target.value)}
-                        placeholder="How meaningful did today feel?"
+                        placeholder="How did your day feel?"
                       />
                     </label>
-
-                    <div className="camera-row">
-                      <button
-                        type="button"
-                        className="secondary-btn"
-                        onClick={() => cameraInputRef.current?.click()}
-                        disabled={ocrBusy}
-                      >
-                        {ocrBusy ? "Scanning..." : "Open Camera & Scan Notebook"}
-                      </button>
-                      <input
-                        ref={cameraInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handlePhotoSelected}
-                        className="hidden-input"
-                      />
-                    </div>
-
-                    {photoPreview ? <img className="snapshot" src={photoPreview} alt="Notebook capture preview" /> : null}
-
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={ocrBusy}
+                    >
+                      {ocrBusy ? "Reading notebook..." : "Scan notebook page"}
+                    </button>
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handlePhotoSelected}
+                      className="hidden"
+                    />
+                    {photoPreview ? <img className="preview" src={photoPreview} alt="Notebook preview" /> : null}
                     <label>
-                      Extracted Notebook Text
+                      Notebook text
                       <textarea
                         rows={4}
                         value={imageText}
                         onChange={(e) => setImageText(e.target.value)}
-                        placeholder="OCR output appears here."
+                        placeholder="Scanned text appears here."
                       />
                     </label>
-
-                    <label className="check-row">
+                    <label className="toggle">
                       <input type="checkbox" checked={lovedDay} onChange={(e) => setLovedDay(e.target.checked)} />
-                      Did you love your day today?
+                      I loved my day
                     </label>
-
-                    <button type="submit" className="primary-btn">
-                      Analyze with AI
+                    <button type="submit" className="primary">
+                      Save check-in
                     </button>
                   </form>
-
                   {pulseResult ? (
-                    <article className="result-card">
+                    <article className="card">
                       <p className="score">{pulseResult.fulfillment_score}/100</p>
-                      <p className={`risk ${pulseResult.risk_band}`}>{pulseResult.risk_band} risk</p>
+                      <p className={`pill ${pulseResult.risk_band}`}>{pulseResult.risk_band} risk</p>
                       <p>{pulseResult.sentiment_summary}</p>
                       <p className="quote">"{pulseResult.quote}"</p>
                     </article>
@@ -406,15 +368,9 @@ function App() {
 
               {screen === "connections" ? (
                 <>
-                  <img
-                    className="artwork"
-                    src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80"
-                    alt="Friends supporting each other"
-                  />
                   <h2>Silent Connection</h2>
-                  <p className="muted">No chat noise. Just visible care, one nudge at a time.</p>
-
-                  <form onSubmit={addFriend} className="form-stack">
+                  <p className="subtle">Show support without pressure.</p>
+                  <form onSubmit={addFriend} className="stack">
                     <label>
                       Add friend by phone
                       <input
@@ -423,112 +379,85 @@ function App() {
                         placeholder="+15550001234"
                       />
                     </label>
-                    <button type="submit" className="primary-btn">
-                      Add Friend
+                    <button type="submit" className="primary">
+                      Add friend
                     </button>
                   </form>
-
-                  <div className="list-stack">
+                  <div className="list">
                     {friends.map((friend) => (
-                      <article key={friend.id} className="list-row">
+                      <article key={friend.id} className="row">
                         <div>
-                          <p className="name-row">
-                            <span className="orb-dot" style={{ backgroundColor: friend.mood_color }} /> {friend.name}
+                          <p className="name">
+                            <span className="orb" style={{ backgroundColor: friend.mood_color }} />
+                            {friend.name}
                           </p>
-                          <p className="muted">{moodLabel(friend.latest_score)}</p>
+                          <p className="subtle">{moodLabel(friend.latest_score)}</p>
                         </div>
-                        <button type="button" className="secondary-btn" onClick={() => sendNudge(friend.id)}>
-                          👍 Nudge
+                        <button type="button" className="secondary" onClick={() => sendNudge(friend.id)}>
+                          Nudge
                         </button>
                       </article>
                     ))}
-                    {friends.length === 0 ? <p className="muted">No friends added yet.</p> : null}
+                    {friends.length === 0 ? <p className="subtle">No friends yet.</p> : null}
                   </div>
                 </>
               ) : null}
 
               {screen === "discover" ? (
                 <>
-                  <img
-                    className="artwork"
-                    src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
-                    alt="Global network feeling"
-                  />
                   <h2>Global Discovery</h2>
-                  <p className="muted">People rise by supporting others with consistent nudges.</p>
-
-                  <div className="list-stack">
+                  <p className="subtle">A leaderboard of quiet support.</p>
+                  <div className="list">
                     {discovery.map((row, index) => (
-                      <article key={row.id} className="list-row">
-                        <div>
-                          <p className="name-row">
-                            #{index + 1} <span className="orb-dot" style={{ backgroundColor: row.mood_color }} />{" "}
-                            {row.name}
-                          </p>
-                        </div>
+                      <article key={row.id} className="row">
+                        <p className="name">
+                          #{index + 1}
+                          <span className="orb" style={{ backgroundColor: row.mood_color }} />
+                          {row.name}
+                        </p>
                         <strong>{row.altruism_score}</strong>
                       </article>
                     ))}
-                    {discovery.length === 0 ? <p className="muted">No discovery data yet.</p> : null}
                   </div>
                 </>
               ) : null}
 
               {screen === "quotes" ? (
                 <>
-                  <img
-                    className="artwork"
-                    src="https://images.unsplash.com/photo-1504198453319-5ce911bafcde?auto=format&fit=crop&w=900&q=80"
-                    alt="Book and warm light"
-                  />
                   <h2>Daily Quote</h2>
-                  <p className="muted">Actionable support tuned to your recent emotional trend.</p>
-
+                  <p className="subtle">A gentle thought for your next step.</p>
                   {recommendation ? (
-                    <article className="result-card quote-panel">
+                    <article className="card">
                       <p className="quote">"{recommendation.quote}"</p>
-                      <p className="muted">— {recommendation.source}</p>
+                      <p className="subtle">— {recommendation.source}</p>
                       <p>{recommendation.action}</p>
                       {recommendation.professionalBridge ? (
-                        <button type="button" className="secondary-btn danger-btn">
-                          Connect to Professional
+                        <button type="button" className="secondary danger">
+                          Connect to a professional
                         </button>
                       ) : null}
                     </article>
                   ) : (
-                    <p className="muted">Complete your first check-in to unlock recommendations.</p>
+                    <p className="subtle">Complete a check-in to unlock this page.</p>
                   )}
                 </>
               ) : null}
 
               {screen === "profile" ? (
                 <>
-                  <img
-                    className="artwork"
-                    src="https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=900&q=80"
-                    alt="Calm portrait in soft light"
-                  />
-                  <h2>Your Profile</h2>
-                  <p className="muted">This shapes how Lumina checks in with you.</p>
-                  <form onSubmit={saveProfile} className="form-stack">
+                  <h2>Profile</h2>
+                  <p className="subtle">Keep this updated so Lumina can adapt to you.</p>
+                  <form onSubmit={saveProfile} className="stack">
                     <label>
                       Name
-                      <input
-                        value={profile.name ?? ""}
-                        onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                      />
+                      <input value={profile.name ?? ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
                     </label>
                     <label>
                       Age
                       <input
                         type="number"
                         value={profile.age ?? ""}
-                        onChange={(e) =>
-                          setProfile({
-                            ...profile,
-                            age: e.target.value ? Number(e.target.value) : null
-                          })
-                        }
+                        onChange={(e) => setProfile({ ...profile, age: e.target.value ? Number(e.target.value) : null })}
                       />
                     </label>
                     <label>
@@ -547,20 +476,17 @@ function App() {
                     </label>
                     <label>
                       Gender
-                      <input
-                        value={profile.gender ?? ""}
-                        onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
-                      />
+                      <input value={profile.gender ?? ""} onChange={(e) => setProfile({ ...profile, gender: e.target.value })} />
                     </label>
                     <label>
-                      Personality Type (Optional)
+                      Personality type
                       <input
                         value={profile.personality_type ?? ""}
                         onChange={(e) => setProfile({ ...profile, personality_type: e.target.value })}
                       />
                     </label>
-                    <button type="submit" className="primary-btn">
-                      Save Profile
+                    <button type="submit" className="primary">
+                      Save profile
                     </button>
                   </form>
                 </>
@@ -572,10 +498,10 @@ function App() {
                 <button
                   key={item.id}
                   type="button"
-                  className={`nav-btn ${screen === item.id ? "active" : ""}`}
+                  className={`tab ${screen === item.id ? "active" : ""}`}
                   onClick={() => setScreen(item.id)}
                 >
-                  <span>{item.icon}</span>
+                  <span className="dot">{item.icon}</span>
                   <span>{item.label}</span>
                 </button>
               ))}
@@ -583,7 +509,7 @@ function App() {
           </>
         )}
 
-        <footer className="status-bar">{status}</footer>
+        <footer className="notice">{notice}</footer>
       </div>
     </main>
   );
