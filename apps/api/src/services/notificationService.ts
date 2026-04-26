@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import { query } from "../db/client";
 
 type RedisLike = {
   publish: (channel: string, message: string) => Promise<number>;
@@ -32,6 +33,15 @@ export async function publishNudgeNotification(
   receiverId: string,
   type: "friend" | "discovery"
 ) {
+  const kind = type === "friend" ? "friend_nudge" : "discovery_nudge";
+  await query(
+    `
+      INSERT INTO notifications (user_id, actor_id, kind, message)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [receiverId, senderId, kind, type === "friend" ? "A friend sent you a thumbs-up." : "You received a discovery thumbs-up."]
+  );
+
   const eventPayload = {
     receiverId,
     senderId,

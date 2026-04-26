@@ -50,10 +50,13 @@ CREATE TABLE IF NOT EXISTS nudges (
 
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind VARCHAR(50) NOT NULL,
+  receiver_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  type VARCHAR(50),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  message TEXT NOT NULL,
+  kind VARCHAR(50),
+  message TEXT DEFAULT '',
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -61,9 +64,30 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE;
 ALTER TABLE friend_links ADD COLUMN IF NOT EXISTS nickname VARCHAR(120);
 ALTER TABLE nudges ADD COLUMN IF NOT EXISTS nudge_day DATE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS receiver_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type VARCHAR(50);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS kind VARCHAR(50);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message TEXT DEFAULT '';
+
 UPDATE nudges
 SET nudge_day = COALESCE(nudge_day, DATE(created_at), CURRENT_DATE)
 WHERE nudge_day IS NULL;
+
+UPDATE notifications
+SET receiver_id = COALESCE(receiver_id, user_id)
+WHERE receiver_id IS NULL;
+
+UPDATE notifications
+SET sender_id = COALESCE(sender_id, actor_id)
+WHERE sender_id IS NULL;
+
+UPDATE notifications
+SET type = COALESCE(type, kind, 'friend')
+WHERE type IS NULL;
+
 ALTER TABLE nudges ALTER COLUMN nudge_day SET DEFAULT CURRENT_DATE;
 ALTER TABLE nudges ALTER COLUMN nudge_day SET NOT NULL;
 
@@ -71,7 +95,7 @@ CREATE INDEX IF NOT EXISTS nudges_daily_lookup
 ON nudges (sender_id, receiver_id, nudge_day);
 
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx
-ON notifications (user_id, created_at DESC);
+ON notifications (COALESCE(receiver_id, user_id), created_at DESC);
 `;
 
 export async function initializeSchema() {

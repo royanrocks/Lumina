@@ -33,8 +33,8 @@ type FriendProfileRow = {
 type NotificationRow = {
   id: string;
   sender_name: string | null;
-  sender_id: string;
-  kind: string;
+  actor_id: string;
+  type: string;
   created_at: string;
   read_at: string | null;
 };
@@ -308,14 +308,14 @@ socialRouter.get("/notifications", requireAuth, async (req: Request, res: Respon
     `
       SELECT
         n.id,
-        n.sender_id,
-        n.kind,
+        COALESCE(n.sender_id, n.actor_id) AS actor_id,
+        COALESCE(n.type, n.kind, 'friend') AS type,
         n.created_at,
         n.read_at,
         u.name AS sender_name
       FROM notifications n
-      JOIN users u ON u.id = n.sender_id
-      WHERE n.receiver_id = $1
+      LEFT JOIN users u ON u.id = COALESCE(n.sender_id, n.actor_id)
+      WHERE COALESCE(n.receiver_id, n.user_id) = $1
       ORDER BY n.created_at DESC
       LIMIT 50
     `,
@@ -325,9 +325,9 @@ socialRouter.get("/notifications", requireAuth, async (req: Request, res: Respon
   return res.json({
     notifications: result.rows.map((row) => ({
       id: row.id,
-      senderId: row.sender_id,
+      senderId: row.actor_id,
       senderName: row.sender_name ?? "Someone",
-      type: row.kind,
+      type: row.type === "discovery" ? "discovery_nudge" : row.type,
       createdAt: row.created_at,
       read: Boolean(row.read_at)
     }))
@@ -342,7 +342,7 @@ socialRouter.post("/notifications/read-all", requireAuth, async (req: Request, r
     `
       UPDATE notifications
       SET read_at = NOW()
-      WHERE receiver_id = $1
+      WHERE COALESCE(receiver_id, user_id) = $1
         AND read_at IS NULL
     `,
     [req.user.userId]
