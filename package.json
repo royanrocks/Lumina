@@ -1,0 +1,14 @@
+{
+  "name": "lumina",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace apps/api && npm run build --workspace apps/web",
+    "dev": "npm run dev --workspace apps/api",
+    "lint": "npm run lint --workspace apps/api && npm run lint --workspace apps/web"
+  }
+}

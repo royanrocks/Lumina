@@ -1,0 +1,38 @@
+databases:
+  - name: lumina-db
+    databaseName: lumina
+    user: lumina_user
+
+services:
+  - type: web
+    name: lumina-api
+    runtime: node
+    rootDir: .
+    plan: starter
+    buildCommand: npm install && npm run build --workspace apps/api
+    startCommand: npm run start --workspace apps/api
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lumina-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://lumina-web.onrender.com
+      - key: NODE_ENV
+        value: production
+      - key: REDIS_URL
+        sync: false
+
+  - type: web
+    name: lumina-web
+    runtime: static
+    rootDir: .
+    buildCommand: npm install && npm run build --workspace apps/web
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://lumina-api.onrender.com/api
