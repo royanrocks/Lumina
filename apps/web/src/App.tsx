@@ -5,7 +5,7 @@ type AuthResponse = { token: string };
 
 type Profile = {
   name: string | null;
-  age: number | null;
+  birth_date: string | null;
   location: string | null;
   education: string | null;
   gender: string | null;
@@ -47,7 +47,7 @@ const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api"
 
 const emptyProfile: Profile = {
   name: "",
-  age: null,
+  birth_date: "",
   location: "",
   education: "",
   gender: "",
@@ -96,10 +96,14 @@ function App() {
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendPhone, setFriendPhone] = useState("");
+  const [friendName, setFriendName] = useState("");
   const [discovery, setDiscovery] = useState<DiscoveryRow[]>([]);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const contactInputRef = useRef<HTMLInputElement | null>(null);
+  const [showScanStep, setShowScanStep] = useState(false);
+  const [scanDone, setScanDone] = useState(false);
 
   const headers = useMemo<Record<string, string>>(() => {
     const nextHeaders: Record<string, string> = {
@@ -172,6 +176,7 @@ function App() {
       headers,
       body: JSON.stringify({
         ...profile,
+        birthDate: profile.birth_date,
         personalityType: profile.personality_type
       })
     });
@@ -210,7 +215,7 @@ function App() {
     const response = await fetch(`${apiBase}/social/friends/add`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ phone: friendPhone })
+      body: JSON.stringify({ phone: friendPhone, nickname: friendName })
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -218,6 +223,7 @@ function App() {
       return;
     }
     setFriendPhone("");
+    setFriendName("");
     setNotice("Friend added.");
     await loadAll();
   }
@@ -257,11 +263,68 @@ function App() {
       }
       const extracted = (payload.text ?? "").trim();
       setImageText(extracted);
+      setScanDone(true);
       setNotice(extracted ? "Notebook text added." : "No text found. Try another angle.");
     } finally {
       setOcrBusy(false);
       event.target.value = "";
     }
+  }
+
+  async function sendDiscoveryThumbsUp(receiverId: string) {
+    const response = await fetch(`${apiBase}/social/discovery/nudge`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ receiverId })
+    });
+    const payload = (await response.json()) as { message?: string; error?: string };
+    if (!response.ok) {
+      setNotice(payload.error ?? "Could not send thumbs-up.");
+      return;
+    }
+    setNotice(payload.message ?? "Thumbs-up sent.");
+    await loadAll();
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setNotice("Location is not supported on this device.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        const fallback = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.latitude}&lon=${coords.longitude}`
+          );
+          const payload = (await response.json()) as { display_name?: string };
+          setProfile((prev) => ({ ...prev, location: payload.display_name ?? fallback }));
+        } catch {
+          setProfile((prev) => ({ ...prev, location: fallback }));
+        }
+      },
+      () => setNotice("Could not access location. You can still type it manually.")
+    );
+  }
+
+  function importContact(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const lines = text.split(/\r?\n/);
+      const nameLine = lines.find((line) => line.startsWith("FN:"));
+      const phoneLine = lines.find((line) => line.includes("TEL"));
+      const importedName = nameLine ? nameLine.replace("FN:", "").trim() : "";
+      const importedPhone = phoneLine ? phoneLine.split(":").pop()?.trim() ?? "" : "";
+      if (importedName) setFriendName(importedName);
+      if (importedPhone) setFriendPhone(importedPhone);
+      setNotice(importedPhone ? "Contact imported." : "Could not read phone from contact card.");
+      event.target.value = "";
+    };
+    reader.readAsText(file);
   }
 
   useEffect(() => {
@@ -321,32 +384,51 @@ function App() {
                         placeholder="How did your day feel?"
                       />
                     </label>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => cameraInputRef.current?.click()}
-                      disabled={ocrBusy}
-                    >
-                      {ocrBusy ? "Reading notebook..." : "Scan notebook page"}
-                    </button>
-                    <input
-                      ref={cameraInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handlePhotoSelected}
-                      className="hidden"
-                    />
-                    {photoPreview ? <img className="preview" src={photoPreview} alt="Notebook preview" /> : null}
-                    <label>
-                      Notebook text
-                      <textarea
-                        rows={4}
-                        value={imageText}
-                        onChange={(e) => setImageText(e.target.value)}
-                        placeholder="Scanned text appears here."
-                      />
-                    </label>
+                    {!showScanStep ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setShowScanStep(true);
+                          setScanDone(false);
+                        }}
+                      >
+                        Scan notebook page
+                      </button>
+                    ) : (
+                      <div className="scan-flow">
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => cameraInputRef.current?.click()}
+                          disabled={ocrBusy}
+                        >
+                          {ocrBusy ? "Reading notebook..." : "Choose notebook photo"}
+                        </button>
+                        <input
+                          ref={cameraInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handlePhotoSelected}
+                          className="hidden"
+                        />
+                        {photoPreview ? <img className="preview" src={photoPreview} alt="Notebook preview" /> : null}
+                        {scanDone ? (
+                          <label>
+                            Notebook text
+                            <textarea
+                              rows={4}
+                              value={imageText}
+                              onChange={(e) => setImageText(e.target.value)}
+                              placeholder="Scanned text appears here."
+                            />
+                          </label>
+                        ) : (
+                          <p className="subtle">After you upload, the scanned text will appear here.</p>
+                        )}
+                      </div>
+                    )}
                     <label className="toggle">
                       <input type="checkbox" checked={lovedDay} onChange={(e) => setLovedDay(e.target.checked)} />
                       I loved my day
@@ -372,6 +454,14 @@ function App() {
                   <p className="subtle">Show support without pressure.</p>
                   <form onSubmit={addFriend} className="stack">
                     <label>
+                      Friend name
+                      <input
+                        value={friendName}
+                        onChange={(e) => setFriendName(e.target.value)}
+                        placeholder="e.g., Maya"
+                      />
+                    </label>
+                    <label>
                       Add friend by phone
                       <input
                         value={friendPhone}
@@ -382,6 +472,20 @@ function App() {
                     <button type="submit" className="primary">
                       Add friend
                     </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => contactInputRef.current?.click()}
+                    >
+                      Import contact card (.vcf)
+                    </button>
+                    <input
+                      ref={contactInputRef}
+                      type="file"
+                      accept=".vcf,text/vcard"
+                      onChange={importContact}
+                      className="hidden"
+                    />
                   </form>
                   <div className="list">
                     {friends.map((friend) => (
@@ -415,7 +519,16 @@ function App() {
                           <span className="orb" style={{ backgroundColor: row.mood_color }} />
                           {row.name}
                         </p>
-                        <strong>{row.altruism_score}</strong>
+                        <div className="leader-right">
+                          <strong>{row.altruism_score}</strong>
+                          <button
+                            type="button"
+                            className="secondary compact"
+                            onClick={() => sendDiscoveryThumbsUp(row.id)}
+                          >
+                            👍 Daily
+                          </button>
+                        </div>
                       </article>
                     ))}
                   </div>
@@ -453,11 +566,11 @@ function App() {
                       <input value={profile.name ?? ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
                     </label>
                     <label>
-                      Age
+                      Birthday
                       <input
-                        type="number"
-                        value={profile.age ?? ""}
-                        onChange={(e) => setProfile({ ...profile, age: e.target.value ? Number(e.target.value) : null })}
+                        type="date"
+                        value={profile.birth_date ?? ""}
+                        onChange={(e) => setProfile({ ...profile, birth_date: e.target.value })}
                       />
                     </label>
                     <label>
@@ -467,23 +580,53 @@ function App() {
                         onChange={(e) => setProfile({ ...profile, location: e.target.value })}
                       />
                     </label>
+                    <button type="button" className="secondary" onClick={useCurrentLocation}>
+                      Use current location
+                    </button>
                     <label>
                       Education
-                      <input
+                      <select
                         value={profile.education ?? ""}
                         onChange={(e) => setProfile({ ...profile, education: e.target.value })}
-                      />
+                      >
+                        <option value="">Select education</option>
+                        <option value="High School">High School</option>
+                        <option value="Undergraduate">Undergraduate</option>
+                        <option value="Graduate">Graduate</option>
+                        <option value="Postgraduate">Postgraduate</option>
+                        <option value="Self-taught">Self-taught</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                      </select>
                     </label>
                     <label>
                       Gender
-                      <input value={profile.gender ?? ""} onChange={(e) => setProfile({ ...profile, gender: e.target.value })} />
+                      <select
+                        value={profile.gender ?? ""}
+                        onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                      >
+                        <option value="">Select gender</option>
+                        <option value="Woman">Woman</option>
+                        <option value="Man">Man</option>
+                        <option value="Non-binary">Non-binary</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                      </select>
                     </label>
                     <label>
                       Personality type
-                      <input
+                      <select
                         value={profile.personality_type ?? ""}
                         onChange={(e) => setProfile({ ...profile, personality_type: e.target.value })}
-                      />
+                      >
+                        <option value="">Select type</option>
+                        <option value="INTJ">INTJ</option>
+                        <option value="INFJ">INFJ</option>
+                        <option value="INFP">INFP</option>
+                        <option value="ENFP">ENFP</option>
+                        <option value="ENTP">ENTP</option>
+                        <option value="ESFJ">ESFJ</option>
+                        <option value="ISFJ">ISFJ</option>
+                        <option value="Big Five Explorer">Big Five Explorer</option>
+                      </select>
                     </label>
                     <button type="submit" className="primary">
                       Save profile

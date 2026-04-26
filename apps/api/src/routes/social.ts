@@ -16,6 +16,10 @@ type DiscoveryRow = {
   altruism_score: string;
 };
 
+type DiscoveryNudgeRow = {
+  receiver_id: string;
+};
+
 export const socialRouter = Router();
 
 socialRouter.get("/friends", requireAuth, async (req: Request, res: Response) => {
@@ -61,7 +65,7 @@ socialRouter.post("/friends/add", requireAuth, async (req: Request, res: Respons
     return res.status(401).json({ error: "Unauthorized" });
   }
   const userId = req.user.userId;
-  const { phone } = req.body as { phone?: string };
+  const { phone, nickname } = req.body as { phone?: string; nickname?: string };
 
   if (!phone) {
     return res.status(400).json({ error: "phone is required" });
@@ -85,6 +89,18 @@ socialRouter.post("/friends/add", requireAuth, async (req: Request, res: Respons
     `,
     [userId, friendId]
   );
+
+  if (nickname && nickname.trim()) {
+    await query(
+      `
+        UPDATE users
+        SET name = COALESCE(NULLIF(TRIM(name), ''), $1),
+            updated_at = NOW()
+        WHERE id = $2
+      `,
+      [nickname.trim(), friendId]
+    );
+  }
 
   return res.status(201).json({ success: true, friendId });
 });
@@ -167,4 +183,42 @@ socialRouter.get("/discovery", async (_req, res) => {
       altruism_score: Number(r.altruism_score)
     }))
   });
+});
+
+socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const senderId = req.user.userId;
+  const { receiverId } = req.body as { receiverId?: string };
+  if (!receiverId) {
+    return res.status(400).json({ error: "receiverId is required" });
+  }
+  if (receiverId === senderId) {
+    return res.status(400).json({ error: "You cannot thumbs-up yourself." });
+  }
+
+  const todayResult = await query<DiscoveryNudgeRow>(
+    `
+      SELECT receiver_id
+      FROM nudges
+      WHERE sender_id = $1
+        AND receiver_id = $2
+        AND DATE(created_at) = CURRENT_DATE
+      LIMIT 1
+    `,
+    [senderId, receiverId]
+  );
+  if ((todayResult.rowCount ?? 0) > 0) {
+    return res.status(409).json({ error: "You already gave this person a thumbs-up today." });
+  }
+
+  await query(
+    `
+      INSERT INTO nudges (sender_id, receiver_id)
+      VALUES ($1, $2)
+    `,
+    [senderId, receiverId]
+  );
+  return res.status(201).json({ message: "Daily thumbs-up sent." });
 });

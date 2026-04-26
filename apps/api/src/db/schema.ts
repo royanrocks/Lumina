@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(20) UNIQUE NOT NULL,
   name VARCHAR(120),
   age INT,
+  birthday DATE,
   location VARCHAR(120),
   education VARCHAR(120),
   gender VARCHAR(50),
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS friend_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   friend_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  nickname VARCHAR(120),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE (user_id, friend_id)
 );
@@ -44,8 +46,16 @@ CREATE TABLE IF NOT EXISTS nudges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  nudge_day DATE NOT NULL DEFAULT CURRENT_DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS nudges_daily_unique
+ON nudges (sender_id, receiver_id, nudge_day);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE;
+ALTER TABLE friend_links ADD COLUMN IF NOT EXISTS nickname VARCHAR(120);
+ALTER TABLE nudges ADD COLUMN IF NOT EXISTS nudge_day DATE NOT NULL DEFAULT CURRENT_DATE;
 `;
 
 export async function initializeSchema() {
