@@ -1,9 +1,22 @@
 import { Router } from "express";
 import { query } from "../db/client";
 import { requireAuth } from "../middleware/auth";
-import { analyzePulse } from "../services/aiService";
+import { analyzePulse, extractTextFromImage } from "../services/aiService";
 
 export const pulseRouter = Router();
+
+pulseRouter.post("/ocr", requireAuth, async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const { imageBase64 } = req.body ?? {};
+  if (typeof imageBase64 !== "string" || imageBase64.trim().length === 0) {
+    return res.status(400).json({ error: "imageBase64 is required" });
+  }
+
+  const text = await extractTextFromImage(imageBase64);
+  return res.json({ text });
+});
 
 pulseRouter.post("/checkin", requireAuth, async (req, res) => {
   if (!req.user) {

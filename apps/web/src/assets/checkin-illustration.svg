@@ -1,0 +1,15 @@
+<svg width="320" height="180" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="checkinTitle">
+  <title id="checkinTitle">Notebook and camera illustration</title>
+  <rect width="320" height="180" rx="24" fill="#FFF7D6"/>
+  <rect x="32" y="28" width="166" height="124" rx="18" fill="#FFFFFF" stroke="#F3DF8C" stroke-width="3"/>
+  <circle cx="57" cy="55" r="8" fill="#FFD700"/>
+  <line x1="76" y1="55" x2="170" y2="55" stroke="#E8D28A" stroke-width="6" stroke-linecap="round"/>
+  <line x1="48" y1="80" x2="170" y2="80" stroke="#F0E2B2" stroke-width="5" stroke-linecap="round"/>
+  <line x1="48" y1="100" x2="170" y2="100" stroke="#F0E2B2" stroke-width="5" stroke-linecap="round"/>
+  <line x1="48" y1="120" x2="150" y2="120" stroke="#F0E2B2" stroke-width="5" stroke-linecap="round"/>
+  <rect x="212" y="46" width="74" height="94" rx="14" fill="#232A3A"/>
+  <rect x="222" y="59" width="54" height="51" rx="10" fill="#FFE47E"/>
+  <circle cx="249" cy="84.5" r="15" fill="#FFFFFF"/>
+  <circle cx="249" cy="84.5" r="8" fill="#FFD700"/>
+  <rect x="237" y="118" width="24" height="8" rx="4" fill="#F2F2F2"/>
+</svg>

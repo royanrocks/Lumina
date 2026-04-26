@@ -137,3 +137,48 @@ export async function analyzePulse(entryText: string, lovedToday: boolean): Prom
     return scoreFromTextFallback(entryText, lovedToday);
   }
 }
+
+export async function extractTextFromImage(imageBase64: string): Promise<string> {
+  if (!imageBase64.trim()) {
+    return "";
+  }
+
+  if (!openai) {
+    return "OCR unavailable without OPENAI_API_KEY. Please type your note manually.";
+  }
+
+  const inputImage = imageBase64.startsWith("data:image")
+    ? imageBase64
+    : `data:image/jpeg;base64,${imageBase64}`;
+
+  try {
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "You extract text from notebook photos. Return plain text only, preserving line breaks. If nothing is readable, return an empty string."
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Extract all readable handwriting from this notebook image."
+            },
+            {
+              type: "input_image",
+              image_url: inputImage,
+              detail: "high"
+            }
+          ]
+        }
+      ]
+    });
+
+    return (response.output_text ?? "").trim();
+  } catch {
+    return "";
+  }
+}
