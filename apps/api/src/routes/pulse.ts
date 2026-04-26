@@ -6,6 +6,13 @@ import { getMoodColorFromScore } from "../services/socialService";
 
 export const pulseRouter = Router();
 
+function trimNote(text: string | null): string | null {
+  if (!text) return null;
+  const cleaned = text.trim();
+  if (!cleaned) return null;
+  return cleaned.slice(0, 240);
+}
+
 pulseRouter.post("/ocr", requireAuth, async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -116,111 +123,115 @@ pulseRouter.get("/trends", requireAuth, async (req, res) => {
   });
 });
 
-pulseRouter.get("/history", requireAuth, async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: "Unauthorized" });
+pulseRouter.get("/history", requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const userId = req.user.userId;
+
+    const day = await query<{ day: string; avg_score: string; mood_color: string; latest_note: string | null }>(
+      `
+        SELECT
+          TO_CHAR(DATE(created_at), 'YYYY-MM-DD') AS day,
+          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          (
+            SELECT pe2.journal_text
+            FROM pulse_entries pe2
+            WHERE pe2.user_id = $1
+              AND DATE(pe2.created_at) = DATE(pe.created_at)
+            ORDER BY pe2.created_at DESC
+            LIMIT 1
+          ) AS latest_note,
+          CASE
+            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
+            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            ELSE '#5DA9E9'
+          END AS mood_color
+        FROM pulse_entries pe
+        WHERE pe.user_id = $1
+        GROUP BY DATE(created_at)
+        ORDER BY day DESC
+        LIMIT 31
+      `,
+      [userId]
+    );
+
+    const week = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
+      `
+        SELECT
+          TO_CHAR(DATE_TRUNC('week', created_at), 'YYYY-MM-DD') AS label,
+          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          (
+            SELECT pe2.journal_text
+            FROM pulse_entries pe2
+            WHERE pe2.user_id = $1
+              AND DATE_TRUNC('week', pe2.created_at) = DATE_TRUNC('week', pe.created_at)
+            ORDER BY pe2.created_at DESC
+            LIMIT 1
+          ) AS latest_note,
+          CASE
+            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
+            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            ELSE '#5DA9E9'
+          END AS mood_color
+        FROM pulse_entries pe
+        WHERE pe.user_id = $1
+        GROUP BY DATE_TRUNC('week', created_at)
+        ORDER BY label DESC
+        LIMIT 12
+      `,
+      [userId]
+    );
+
+    const month = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
+      `
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS label,
+          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          (
+            SELECT pe2.journal_text
+            FROM pulse_entries pe2
+            WHERE pe2.user_id = $1
+              AND DATE_TRUNC('month', pe2.created_at) = DATE_TRUNC('month', pe.created_at)
+            ORDER BY pe2.created_at DESC
+            LIMIT 1
+          ) AS latest_note,
+          CASE
+            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
+            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            ELSE '#5DA9E9'
+          END AS mood_color
+        FROM pulse_entries pe
+        WHERE pe.user_id = $1
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY label DESC
+        LIMIT 12
+      `,
+      [userId]
+    );
+
+    return res.json({
+      day: day.rows.map((row) => ({
+        date: row.day,
+        score: Number(row.avg_score),
+        color: row.mood_color,
+        note: trimNote(row.latest_note)
+      })),
+      week: week.rows.map((row) => ({
+        label: row.label,
+        score: Number(row.avg_score),
+        color: row.mood_color,
+        note: trimNote(row.latest_note)
+      })),
+      month: month.rows.map((row) => ({
+        label: row.label,
+        score: Number(row.avg_score),
+        color: row.mood_color,
+        note: trimNote(row.latest_note)
+      }))
+    });
+  } catch (error) {
+    return next(error);
   }
-  const userId = req.user.userId;
-
-  const day = await query<{ day: string; avg_score: string; mood_color: string; latest_note: string | null }>(
-    `
-      SELECT
-        TO_CHAR(DATE(created_at), 'YYYY-MM-DD') AS day,
-        ROUND(AVG(fulfillment_score))::text AS avg_score,
-        (
-          SELECT pe2.journal_text
-          FROM pulse_entries pe2
-          WHERE pe2.user_id = $1
-            AND DATE(pe2.created_at) = DATE(pe.created_at)
-          ORDER BY pe2.created_at DESC
-          LIMIT 1
-        ) AS latest_note,
-        CASE
-          WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-          WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
-          ELSE '#5DA9E9'
-        END AS mood_color
-      FROM pulse_entries pe
-      WHERE pe.user_id = $1
-      GROUP BY DATE(created_at)
-      ORDER BY day DESC
-      LIMIT 31
-    `,
-    [userId]
-  );
-
-  const week = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
-    `
-      SELECT
-        TO_CHAR(DATE_TRUNC('week', created_at), 'YYYY-MM-DD') AS label,
-        ROUND(AVG(fulfillment_score))::text AS avg_score,
-        (
-          SELECT pe2.journal_text
-          FROM pulse_entries pe2
-          WHERE pe2.user_id = $1
-            AND DATE_TRUNC('week', pe2.created_at) = DATE_TRUNC('week', pe.created_at)
-          ORDER BY pe2.created_at DESC
-          LIMIT 1
-        ) AS latest_note,
-        CASE
-          WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-          WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
-          ELSE '#5DA9E9'
-        END AS mood_color
-      FROM pulse_entries pe
-      WHERE pe.user_id = $1
-      GROUP BY DATE_TRUNC('week', created_at)
-      ORDER BY label DESC
-      LIMIT 12
-    `,
-    [userId]
-  );
-
-  const month = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
-    `
-      SELECT
-        TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS label,
-        ROUND(AVG(fulfillment_score))::text AS avg_score,
-        (
-          SELECT pe2.journal_text
-          FROM pulse_entries pe2
-          WHERE pe2.user_id = $1
-            AND DATE_TRUNC('month', pe2.created_at) = DATE_TRUNC('month', pe.created_at)
-          ORDER BY pe2.created_at DESC
-          LIMIT 1
-        ) AS latest_note,
-        CASE
-          WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-          WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
-          ELSE '#5DA9E9'
-        END AS mood_color
-      FROM pulse_entries pe
-      WHERE pe.user_id = $1
-      GROUP BY DATE_TRUNC('month', created_at)
-      ORDER BY label DESC
-      LIMIT 12
-    `,
-    [userId]
-  );
-
-  return res.json({
-    day: day.rows.map((row) => ({
-      date: row.day,
-      score: Number(row.avg_score),
-      color: row.mood_color,
-      note: row.latest_note
-    })),
-    week: week.rows.map((row) => ({
-      label: row.label,
-      score: Number(row.avg_score),
-      color: row.mood_color,
-      note: row.latest_note
-    })),
-    month: month.rows.map((row) => ({
-      label: row.label,
-      score: Number(row.avg_score),
-      color: row.mood_color,
-      note: row.latest_note
-    }))
-  });
 });

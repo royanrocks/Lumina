@@ -1,5 +1,7 @@
+import "express-async-errors";
 import cors from "cors";
 import express from "express";
+import type { NextFunction, Request, Response } from "express";
 
 import { env } from "./config/env";
 import { initializeSchema } from "./db/schema";
@@ -51,6 +53,14 @@ app.use("/api/personality", personalityRouter);
 app.use("/api/pulse", pulseRouter);
 app.use("/api/social", socialRouter);
 app.use("/api/support", supportRouter);
+
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("Unhandled API error:", error);
+  if (res.headersSent) {
+    return;
+  }
+  res.status(500).json({ error: "Something went wrong. Please try again." });
+});
 
 const bootstrap = async () => {
   await initializeSchema();
