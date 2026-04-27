@@ -860,7 +860,6 @@ function App() {
                         </optgroup>
                       </select>
                     </label>
-                    <p className="subtle">Includes full MBTI list plus additional framework options.</p>
                     <button type="submit" className="primary">
                       Save profile
                     </button>
