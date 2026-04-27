@@ -6,6 +6,7 @@ type TimeView = "day" | "week" | "month";
 type Screen = "checkin" | "quotes" | "calendar" | "discover" | "profile";
 
 type Profile = {
+  id: string | null;
   name: string | null;
   birthday: string | null;
   age: number | null;
@@ -45,6 +46,7 @@ type Checkin = {
 };
 
 type MoodHistoryItem = {
+  id: string;
   label: string;
   score: number;
   color: string;
@@ -62,6 +64,7 @@ type NotificationItem = {
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const emptyProfile: Profile = {
+  id: null,
   name: "",
   birthday: "",
   age: null,
@@ -77,6 +80,38 @@ const navItems: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "calendar", label: "Calendar", icon: "●" },
   { id: "discover", label: "Discover", icon: "●" },
   { id: "profile", label: "Profile", icon: "●" }
+];
+
+const checkinBandLabel: Record<Checkin["risk_band"], string> = {
+  low: "gentle zone",
+  medium: "steady zone",
+  high: "extra-care zone"
+};
+
+const personalityOptions = [
+  "INTJ",
+  "INTP",
+  "ENTJ",
+  "ENTP",
+  "INFJ",
+  "INFP",
+  "ENFJ",
+  "ENFP",
+  "ISTJ",
+  "ISFJ",
+  "ESTJ",
+  "ESFJ",
+  "ISTP",
+  "ISFP",
+  "ESTP",
+  "ESFP",
+  "Big Five - Balanced",
+  "Big Five - Openness-led",
+  "Big Five - Conscientiousness-led",
+  "Big Five - Extraversion-led",
+  "Big Five - Agreeableness-led",
+  "Big Five - Emotional sensitivity-led",
+  "Still exploring"
 ];
 
 function moodLabel(score: number | null) {
@@ -179,7 +214,7 @@ function App() {
     const discoveryData = (await discoveryRes.json()) as { discovery: DiscoveryRow[] };
     const recData = (await recRes.json()) as { recommendation: Recommendation };
     const historyData = (await historyRes.json()) as {
-      day: Array<{ date: string; score: number; color: string; note: string | null }>;
+      day: Array<{ timestamp: string; score: number; color: string; note: string | null }>;
       week: Array<{ label: string; score: number; color: string; note: string | null }>;
       month: Array<{ label: string; score: number; color: string; note: string | null }>;
     };
@@ -190,9 +225,27 @@ function App() {
     setDiscovery(discoveryData.discovery);
     setRecommendation(recData.recommendation);
     setHistory({
-      day: historyData.day.map((item) => ({ label: item.date, score: item.score, color: item.color, note: item.note })),
-      week: historyData.week,
-      month: historyData.month
+      day: historyData.day.map((item) => ({
+        id: `day-${item.timestamp}`,
+        label: formatTime(item.timestamp),
+        score: item.score,
+        color: item.color,
+        note: item.note
+      })),
+      week: historyData.week.map((item) => ({
+        id: `week-${item.label}`,
+        label: item.label,
+        score: item.score,
+        color: item.color,
+        note: item.note
+      })),
+      month: historyData.month.map((item) => ({
+        id: `month-${item.label}`,
+        label: item.label,
+        score: item.score,
+        color: item.color,
+        note: item.note
+      }))
     });
     setNotifications(notificationsData.notifications);
   }
@@ -482,7 +535,7 @@ function App() {
                   {pulseResult ? (
                     <article className="card">
                       <p className="score">{pulseResult.fulfillment_score}/100</p>
-                      <p className={`chip ${pulseResult.risk_band}`}>{pulseResult.risk_band} risk</p>
+                      <p className={`chip ${pulseResult.risk_band}`}>{checkinBandLabel[pulseResult.risk_band]}</p>
                       <p>{pulseResult.sentiment_summary}</p>
                       <p className="quote">"{pulseResult.quote}"</p>
                     </article>
@@ -506,7 +559,7 @@ function App() {
                     </div>
                     <div className="list">
                       {history[historyView].map((entry) => (
-                        <article className="row" key={`${historyView}-${entry.label}`}>
+                        <article className="row" key={entry.id}>
                           <p className="name">
                             <span className="orb" style={{ backgroundColor: entry.color }} />
                             {entry.label}
@@ -543,21 +596,23 @@ function App() {
 
                   {discoverMenu === "leaderboard" ? (
                     <div className="list">
-                      {discovery.map((row, index) => (
-                        <article key={row.id} className="row">
-                          <p className="name">
-                            #{index + 1}
-                            <span className="orb" style={{ backgroundColor: row.mood_color }} />
-                            {row.name}
-                          </p>
-                          <div className="row-right">
-                            <strong>{row.altruism_score}</strong>
-                            <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
-                              👍 Daily
-                            </button>
-                          </div>
-                        </article>
-                      ))}
+                      {discovery
+                        .filter((row) => row.id !== profile.id)
+                        .map((row, index) => (
+                          <article key={row.id} className="row">
+                            <p className="name">
+                              #{index + 1}
+                              <span className="orb" style={{ backgroundColor: row.mood_color }} />
+                              {row.name}
+                            </p>
+                            <div className="row-right">
+                              <strong>{row.altruism_score}</strong>
+                              <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
+                                👍 Daily
+                              </button>
+                            </div>
+                          </article>
+                        ))}
                     </div>
                   ) : (
                     <>
@@ -676,7 +731,7 @@ function App() {
                   </div>
                   <div className="history-list">
                     {history[historyView].map((entry) => (
-                      <article className="history-item" key={`${historyView}-${entry.label}`}>
+                      <article className="history-item" key={entry.id}>
                         <div className="history-left">
                           <span className="history-dot" style={{ backgroundColor: entry.color }} />
                           <div>
@@ -755,14 +810,11 @@ function App() {
                         onChange={(e) => setProfile({ ...profile, personality_type: e.target.value })}
                       >
                         <option value="">Select type</option>
-                        <option value="INTJ">INTJ</option>
-                        <option value="INFJ">INFJ</option>
-                        <option value="INFP">INFP</option>
-                        <option value="ENFP">ENFP</option>
-                        <option value="ENTP">ENTP</option>
-                        <option value="ESFJ">ESFJ</option>
-                        <option value="ISFJ">ISFJ</option>
-                        <option value="Big Five Explorer">Big Five Explorer</option>
+                        {personalityOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
                       </select>
                     </label>
                     <button type="submit" className="primary">

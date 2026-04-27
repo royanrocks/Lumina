@@ -265,12 +265,18 @@ socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Res
     return res.status(401).json({ error: "Unauthorized" });
   }
   const senderId = req.user.userId;
-  const { receiverId } = req.body as { receiverId?: string };
+  const { receiverId: rawReceiverId, friendId } = req.body as { receiverId?: string; friendId?: string };
+  const receiverId = rawReceiverId ?? friendId;
   if (!receiverId) {
     return res.status(400).json({ error: "receiverId is required" });
   }
   if (receiverId === senderId) {
-    return res.status(400).json({ error: "You cannot thumbs-up yourself." });
+    return res.status(200).json({ message: "You cannot thumbs-up yourself." });
+  }
+
+  const receiverExists = await query<{ id: string }>(`SELECT id FROM users WHERE id = $1 LIMIT 1`, [receiverId]);
+  if ((receiverExists.rowCount ?? 0) === 0) {
+    return res.status(404).json({ error: "User not found." });
   }
 
   const todayResult = await query<DiscoveryNudgeRow>(
@@ -279,19 +285,19 @@ socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Res
       FROM nudges
       WHERE sender_id = $1
         AND receiver_id = $2
-        AND DATE(created_at) = CURRENT_DATE
+        AND nudge_day = CURRENT_DATE
       LIMIT 1
     `,
     [senderId, receiverId]
   );
   if ((todayResult.rowCount ?? 0) > 0) {
-    return res.status(409).json({ error: "You already gave this person a thumbs-up today." });
+    return res.status(200).json({ message: "You already gave this person a thumbs-up today." });
   }
 
   await query(
     `
-      INSERT INTO nudges (sender_id, receiver_id)
-      VALUES ($1, $2)
+      INSERT INTO nudges (sender_id, receiver_id, nudge_day)
+      VALUES ($1, $2, CURRENT_DATE)
     `,
     [senderId, receiverId]
   );
