@@ -132,81 +132,102 @@ pulseRouter.get("/history", requireAuth, async (req, res, next) => {
 
     const day = await query<{ day: string; avg_score: string; mood_color: string; latest_note: string | null }>(
       `
+        WITH day_buckets AS (
+          SELECT
+            DATE(created_at) AS bucket_day,
+            ROUND(AVG(fulfillment_score))::int AS avg_score
+          FROM pulse_entries
+          WHERE user_id = $1
+          GROUP BY DATE(created_at)
+          ORDER BY bucket_day DESC
+          LIMIT 31
+        )
         SELECT
-          TO_CHAR(DATE(created_at), 'YYYY-MM-DD') AS day,
-          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          TO_CHAR(d.bucket_day, 'YYYY-MM-DD') AS day,
+          d.avg_score::text AS avg_score,
           (
             SELECT pe2.journal_text
             FROM pulse_entries pe2
             WHERE pe2.user_id = $1
-              AND DATE(pe2.created_at) = DATE(pe.created_at)
+              AND DATE(pe2.created_at) = d.bucket_day
             ORDER BY pe2.created_at DESC
             LIMIT 1
           ) AS latest_note,
           CASE
-            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            WHEN d.avg_score >= 70 THEN '#FFD700'
+            WHEN d.avg_score >= 45 THEN '#F4A261'
             ELSE '#5DA9E9'
           END AS mood_color
-        FROM pulse_entries pe
-        WHERE pe.user_id = $1
-        GROUP BY DATE(created_at)
-        ORDER BY day DESC
-        LIMIT 31
+        FROM day_buckets d
+        ORDER BY d.bucket_day DESC
       `,
       [userId]
     );
 
     const week = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
       `
+        WITH week_buckets AS (
+          SELECT
+            DATE_TRUNC('week', created_at)::date AS bucket_week,
+            ROUND(AVG(fulfillment_score))::int AS avg_score
+          FROM pulse_entries
+          WHERE user_id = $1
+          GROUP BY DATE_TRUNC('week', created_at)
+          ORDER BY bucket_week DESC
+          LIMIT 12
+        )
         SELECT
-          TO_CHAR(DATE_TRUNC('week', created_at), 'YYYY-MM-DD') AS label,
-          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          TO_CHAR(w.bucket_week, 'YYYY-MM-DD') AS label,
+          w.avg_score::text AS avg_score,
           (
             SELECT pe2.journal_text
             FROM pulse_entries pe2
             WHERE pe2.user_id = $1
-              AND DATE_TRUNC('week', pe2.created_at) = DATE_TRUNC('week', pe.created_at)
+              AND DATE_TRUNC('week', pe2.created_at)::date = w.bucket_week
             ORDER BY pe2.created_at DESC
             LIMIT 1
           ) AS latest_note,
           CASE
-            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            WHEN w.avg_score >= 70 THEN '#FFD700'
+            WHEN w.avg_score >= 45 THEN '#F4A261'
             ELSE '#5DA9E9'
           END AS mood_color
-        FROM pulse_entries pe
-        WHERE pe.user_id = $1
-        GROUP BY DATE_TRUNC('week', created_at)
-        ORDER BY label DESC
-        LIMIT 12
+        FROM week_buckets w
+        ORDER BY w.bucket_week DESC
       `,
       [userId]
     );
 
     const month = await query<{ label: string; avg_score: string; mood_color: string; latest_note: string | null }>(
       `
+        WITH month_buckets AS (
+          SELECT
+            DATE_TRUNC('month', created_at)::date AS bucket_month,
+            ROUND(AVG(fulfillment_score))::int AS avg_score
+          FROM pulse_entries
+          WHERE user_id = $1
+          GROUP BY DATE_TRUNC('month', created_at)
+          ORDER BY bucket_month DESC
+          LIMIT 12
+        )
         SELECT
-          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS label,
-          ROUND(AVG(fulfillment_score))::text AS avg_score,
+          TO_CHAR(m.bucket_month, 'YYYY-MM') AS label,
+          m.avg_score::text AS avg_score,
           (
             SELECT pe2.journal_text
             FROM pulse_entries pe2
             WHERE pe2.user_id = $1
-              AND DATE_TRUNC('month', pe2.created_at) = DATE_TRUNC('month', pe.created_at)
+              AND DATE_TRUNC('month', pe2.created_at)::date = m.bucket_month
             ORDER BY pe2.created_at DESC
             LIMIT 1
           ) AS latest_note,
           CASE
-            WHEN AVG(fulfillment_score) >= 70 THEN '#FFD700'
-            WHEN AVG(fulfillment_score) >= 45 THEN '#F4A261'
+            WHEN m.avg_score >= 70 THEN '#FFD700'
+            WHEN m.avg_score >= 45 THEN '#F4A261'
             ELSE '#5DA9E9'
           END AS mood_color
-        FROM pulse_entries pe
-        WHERE pe.user_id = $1
-        GROUP BY DATE_TRUNC('month', created_at)
-        ORDER BY label DESC
-        LIMIT 12
+        FROM month_buckets m
+        ORDER BY m.bucket_month DESC
       `,
       [userId]
     );
