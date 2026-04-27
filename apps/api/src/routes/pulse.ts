@@ -130,36 +130,18 @@ pulseRouter.get("/history", requireAuth, async (req, res, next) => {
     }
     const userId = req.user.userId;
 
-    const day = await query<{ day: string; avg_score: string; mood_color: string; latest_note: string | null }>(
+    const day = await query<{ id: string; created_at: string; score: number; mood_color: string; note: string | null }>(
       `
-        WITH day_buckets AS (
-          SELECT
-            DATE(created_at) AS bucket_day,
-            ROUND(AVG(fulfillment_score))::int AS avg_score
-          FROM pulse_entries
-          WHERE user_id = $1
-          GROUP BY DATE(created_at)
-          ORDER BY bucket_day DESC
-          LIMIT 31
-        )
         SELECT
-          TO_CHAR(d.bucket_day, 'YYYY-MM-DD') AS day,
-          d.avg_score::text AS avg_score,
-          (
-            SELECT pe2.journal_text
-            FROM pulse_entries pe2
-            WHERE pe2.user_id = $1
-              AND DATE(pe2.created_at) = d.bucket_day
-            ORDER BY pe2.created_at DESC
-            LIMIT 1
-          ) AS latest_note,
-          CASE
-            WHEN d.avg_score >= 70 THEN '#FFD700'
-            WHEN d.avg_score >= 45 THEN '#F4A261'
-            ELSE '#5DA9E9'
-          END AS mood_color
-        FROM day_buckets d
-        ORDER BY d.bucket_day DESC
+          id,
+          created_at,
+          fulfillment_score AS score,
+          mood_color,
+          journal_text AS note
+        FROM pulse_entries
+        WHERE user_id = $1
+          AND created_at >= NOW() - INTERVAL '31 day'
+        ORDER BY created_at DESC
       `,
       [userId]
     );
@@ -234,10 +216,11 @@ pulseRouter.get("/history", requireAuth, async (req, res, next) => {
 
     return res.json({
       day: day.rows.map((row) => ({
-        date: row.day,
-        score: Number(row.avg_score),
+        id: row.id,
+        timestamp: row.created_at,
+        score: Number(row.score),
         color: row.mood_color,
-        note: trimNote(row.latest_note)
+        note: trimNote(row.note)
       })),
       week: week.rows.map((row) => ({
         label: row.label,
