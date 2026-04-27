@@ -241,20 +241,24 @@ socialRouter.get("/discovery", async (_req, res) => {
     `
   );
 
-  const mood = await query<{ user_id: string; fulfillment_score: number }>(
+  const mood = await query<{ user_id: string; fulfillment_score: number; created_at: string }>(
     `
-      SELECT DISTINCT ON (user_id) user_id, fulfillment_score
+      SELECT DISTINCT ON (user_id) user_id, fulfillment_score, created_at
       FROM pulse_entries
       ORDER BY user_id, created_at DESC
     `
   );
-  const moodMap = new Map<string, number>(mood.rows.map((row) => [row.user_id, Number(row.fulfillment_score)]));
+  const moodMap = new Map<string, { score: number | null; capturedAt: string | null }>(
+    mood.rows.map((row) => [row.user_id, { score: Number(row.fulfillment_score), capturedAt: row.created_at }])
+  );
 
   return res.json({
     discovery: result.rows.map((r) => ({
       id: r.id,
       name: r.name ?? "Anonymous",
-      mood_color: getMoodColorFromScore(moodMap.get(r.id) ?? null),
+      mood_color: getMoodColorFromScore(moodMap.get(r.id)?.score ?? null),
+      latest_score: moodMap.get(r.id)?.score ?? null,
+      latest_captured_at: moodMap.get(r.id)?.capturedAt ?? null,
       altruism_score: Number(r.altruism_score)
     }))
   });

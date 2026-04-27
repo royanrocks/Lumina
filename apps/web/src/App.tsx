@@ -28,6 +28,7 @@ type DiscoveryRow = {
   id: string;
   name: string;
   mood_color: string;
+  latest_score: number | null;
   altruism_score: number;
 };
 
@@ -136,6 +137,13 @@ function moodLabel(score: number | null) {
   if (score >= 60) return "Steady";
   if (score >= 40) return "Cloudy";
   return "Heavy";
+}
+
+function colorToMoodText(color: string) {
+  if (color === "#FFD700") return "Radiant";
+  if (color === "#F4A261") return "Steady";
+  if (color === "#5DA9E9") return "Needs support";
+  return "No recent pulse";
 }
 
 function toBase64(file: File): Promise<string> {
@@ -612,18 +620,28 @@ function App() {
 
                   {discoverMenu === "leaderboard" ? (
                     <div className="list">
-                      {discovery
-                        .filter((row) => row.id !== profile.id)
-                        .map((row, index) => (
+                      {discovery.map((row, index) => (
                           <article key={row.id} className="row">
-                            <p className="name">
-                              #{index + 1}
-                              <span className="orb" style={{ backgroundColor: row.mood_color }} />
-                              {row.name}
-                            </p>
+                            <div>
+                              <p className="name">
+                                #{index + 1}
+                                <span className="orb" style={{ backgroundColor: row.mood_color }} />
+                                {row.id === profile.id ? "You" : row.name}
+                              </p>
+                              <p className="row-sub">
+                                {colorToMoodText(row.mood_color)}
+                                {row.latest_score !== null ? ` · ${row.latest_score}/100` : ""}
+                              </p>
+                            </div>
                             <div className="row-right">
                               <strong>{row.altruism_score}</strong>
-                              <button type="button" className="secondary compact" onClick={() => sendDiscoveryThumbsUp(row.id)}>
+                              <button
+                                type="button"
+                                className="secondary compact"
+                                onClick={() => sendDiscoveryThumbsUp(row.id)}
+                                disabled={row.id === profile.id}
+                                title={row.id === profile.id ? "You cannot thumbs-up yourself." : "Send daily thumbs-up"}
+                              >
                                 👍 Daily
                               </button>
                             </div>
