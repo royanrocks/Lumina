@@ -88,7 +88,7 @@ const checkinBandLabel: Record<Checkin["risk_band"], string> = {
   high: "extra-care zone"
 };
 
-const personalityOptions = [
+const mbtiOptions = [
   "INTJ",
   "INTP",
   "ENTJ",
@@ -104,13 +104,29 @@ const personalityOptions = [
   "ISTP",
   "ISFP",
   "ESTP",
-  "ESFP",
+  "ESFP"
+];
+
+const broaderPersonalityOptions = [
   "Big Five - Balanced",
   "Big Five - Openness-led",
   "Big Five - Conscientiousness-led",
   "Big Five - Extraversion-led",
   "Big Five - Agreeableness-led",
   "Big Five - Emotional sensitivity-led",
+  "Enneagram 1 - Reformer",
+  "Enneagram 2 - Helper",
+  "Enneagram 3 - Achiever",
+  "Enneagram 4 - Individualist",
+  "Enneagram 5 - Investigator",
+  "Enneagram 6 - Loyalist",
+  "Enneagram 7 - Enthusiast",
+  "Enneagram 8 - Challenger",
+  "Enneagram 9 - Peacemaker",
+  "Attachment - Secure",
+  "Attachment - Anxious",
+  "Attachment - Avoidant",
+  "Attachment - Fearful-avoidant",
   "Still exploring"
 ];
 
@@ -810,13 +826,23 @@ function App() {
                         onChange={(e) => setProfile({ ...profile, personality_type: e.target.value })}
                       >
                         <option value="">Select type</option>
-                        {personalityOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
+                        <optgroup label="MBTI">
+                          {mbtiOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Other personality frameworks">
+                          {broaderPersonalityOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
                     </label>
+                    <p className="subtle">Includes full MBTI list plus additional framework options.</p>
                     <button type="submit" className="primary">
                       Save profile
                     </button>
