@@ -26,6 +26,10 @@ services:
         value: production
       - key: REDIS_URL
         sync: false
+      - key: INFOBIP_URL
+        sync: false
+      - key: INFOBIP_API_KEY
+        sync: false
 
   - type: web
     name: lumina-web

@@ -16,5 +16,7 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   openAiApiKey: process.env.OPENAI_API_KEY,
   redisUrl: process.env.REDIS_URL,
-  redisToken: process.env.REDIS_TOKEN
+  redisToken: process.env.REDIS_TOKEN,
+  infobipUrl: process.env.INFOBIP_URL,
+  infobipApiKey: process.env.INFOBIP_API_KEY
 };

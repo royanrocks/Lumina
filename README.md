@@ -39,6 +39,7 @@ This repository contains a **Phase 1 Web MVP**:
 - Database: PostgreSQL
 - AI: OpenAI API (with deterministic fallback when unavailable)
 - Optional realtime: Redis pub/sub for nudges
+- Optional SMS alerts: Infobip SMS API for thumbs-up notifications
 
 ## Quick start
 
@@ -57,6 +58,8 @@ Copy `.env.example` values into Render/local env vars:
 - `JWT_SECRET`
 - `CORS_ORIGIN`
 - `REDIS_URL` (optional)
+- `INFOBIP_URL` (optional; e.g. `https://api.infobip.com`)
+- `INFOBIP_API_KEY` (optional)
 
 ### 3) Run locally
 

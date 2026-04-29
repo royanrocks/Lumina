@@ -7,6 +7,46 @@ type RedisLike = {
 
 let redisClient: RedisLike | null = null;
 
+function normalizePhoneForSms(phone: string): string {
+  const digits = phone.replace(/\D+/g, "");
+  return digits ? `+${digits}` : "";
+}
+
+async function sendInfobipSms(toPhone: string, text: string): Promise<void> {
+  if (!env.infobipUrl || !env.infobipApiKey) {
+    return;
+  }
+
+  const baseUrl = env.infobipUrl.replace(/\/+$/, "");
+  const endpoint = `${baseUrl}/sms/2/text/advanced`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `App ${env.infobipApiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            destinations: [{ to: toPhone }],
+            text
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      console.error("Infobip SMS send failed:", response.status, details);
+    }
+  } catch (error) {
+    console.error("Infobip SMS request error:", error);
+  }
+}
+
 async function getRedisClient(): Promise<RedisLike | null> {
   if (!env.redisUrl) {
     return null;
@@ -34,13 +74,34 @@ export async function publishNudgeNotification(
   type: "friend" | "discovery"
 ) {
   const kind = type === "friend" ? "friend_nudge" : "discovery_nudge";
+  const userLookup = await query<{ id: string; name: string | null; phone: string }>(
+    `
+      SELECT id, name, phone
+      FROM users
+      WHERE id IN ($1, $2)
+    `,
+    [senderId, receiverId]
+  );
+  const sender = userLookup.rows.find((row) => row.id === senderId);
+  const receiver = userLookup.rows.find((row) => row.id === receiverId);
+  const senderName = sender?.name?.trim() || "Someone";
+  const messageText =
+    type === "friend"
+      ? `${senderName} gave you a thumbs-up in Lumina.`
+      : `${senderName} gave you a discovery thumbs-up in Lumina.`;
+
   await query(
     `
       INSERT INTO notifications (user_id, actor_id, kind, message)
       VALUES ($1, $2, $3, $4)
     `,
-    [receiverId, senderId, kind, type === "friend" ? "A friend sent you a thumbs-up." : "You received a discovery thumbs-up."]
+    [receiverId, senderId, kind, messageText]
   );
+
+  const receiverPhone = receiver ? normalizePhoneForSms(receiver.phone) : "";
+  if (receiverPhone) {
+    await sendInfobipSms(receiverPhone, messageText);
+  }
 
   const eventPayload = {
     receiverId,
