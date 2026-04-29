@@ -32,6 +32,7 @@ type DiscoveryRow = {
   mood_color: string;
   latest_score: number | null;
   altruism_score: number;
+  optimistic?: boolean;
 };
 
 type Recommendation = {
@@ -403,16 +404,48 @@ function App() {
   }
 
   async function sendDiscoveryThumbsUp(receiverId: string) {
+    if (receiverId === profile.id) {
+      setNotice("You cannot thumbs-up yourself.");
+      return;
+    }
+
+    // Instant visual feedback while request is in-flight.
+    setDiscovery((prev) =>
+      prev.map((row) =>
+        row.id === receiverId ? { ...row, altruism_score: row.altruism_score + 1, optimistic: true } : row
+      )
+    );
+
     const response = await fetch(`${apiBase}/social/discovery/nudge`, {
       method: "POST",
       headers,
       body: JSON.stringify({ receiverId })
     });
     const payload = (await response.json()) as { message?: string; error?: string };
+
     if (!response.ok) {
+      // Revert optimistic increment on failure.
+      setDiscovery((prev) =>
+        prev.map((row) =>
+          row.id === receiverId ? { ...row, altruism_score: Math.max(0, row.altruism_score - 1), optimistic: false } : row
+        )
+      );
       setNotice(payload.error ?? "Could not send thumbs-up.");
       return;
     }
+
+    if (payload.message?.includes("already gave this person")) {
+      // Server dedupe says no new nudge today; undo optimistic bump.
+      setDiscovery((prev) =>
+        prev.map((row) =>
+          row.id === receiverId ? { ...row, altruism_score: Math.max(0, row.altruism_score - 1), optimistic: false } : row
+        )
+      );
+    } else {
+      // Keep count and clear temporary optimistic marker.
+      setDiscovery((prev) => prev.map((row) => (row.id === receiverId ? { ...row, optimistic: false } : row)));
+    }
+
     setNotice(payload.message ?? "Thumbs-up sent.");
     await loadAll();
   }
@@ -502,8 +535,6 @@ function App() {
                   Log out
                 </button>
               </div>
-            </section>
-            <section className="page">
               {screen === "checkin" ? (
                 <>
                   <h2>Daily Check-in</h2>
@@ -671,7 +702,7 @@ function App() {
                                 disabled={row.id === profile.id}
                                 title={row.id === profile.id ? "You cannot thumbs-up yourself." : "Send daily thumbs-up"}
                               >
-                                👍 Daily
+                                👍 {row.optimistic ? "Sent" : "Daily"}
                               </button>
                             </div>
                           </article>
