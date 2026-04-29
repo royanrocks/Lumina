@@ -17,11 +17,16 @@ function normalizePhone(phone: string): string {
   return `+${digitsOnly}`;
 }
 
+function phoneKeyFromDigits(digitsOnly: string): string {
+  return digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly;
+}
+
 export async function signInWithPhone(
   phoneRaw: string
 ): Promise<{ token: string; user: { id: string; phone: string; name: string | null } }> {
   const phone = normalizePhone(phoneRaw);
   const digitsOnly = phone.replace(/\D+/g, "");
+  const phoneKey = phoneKeyFromDigits(digitsOnly);
 
   if (!digitsOnly) {
     throw new Error("Phone number is required.");
@@ -31,11 +36,17 @@ export async function signInWithPhone(
     `
       SELECT id, phone, name
       FROM users
-      WHERE REGEXP_REPLACE(phone, '\\D', '', 'g') = $1
+      WHERE (
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(phone, '\\D', '', 'g')
+        END
+      ) = $1
       ORDER BY updated_at DESC
       LIMIT 1
     `,
-    [digitsOnly]
+    [phoneKey]
   );
 
   if ((existing.rowCount ?? 0) > 0) {

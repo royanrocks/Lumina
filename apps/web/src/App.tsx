@@ -4,6 +4,8 @@ import "./styles.css";
 type AuthResponse = { token: string };
 type TimeView = "day" | "week" | "month";
 type Screen = "checkin" | "quotes" | "calendar" | "discover" | "profile";
+const SESSION_TOKEN_KEY = "lumina.authToken";
+const SESSION_PHONE_KEY = "lumina.phone";
 
 type Profile = {
   id: string | null;
@@ -161,8 +163,8 @@ function formatTime(iso: string) {
 
 function App() {
   const [screen, setScreen] = useState<Screen>("checkin");
-  const [token, setToken] = useState("");
-  const [phone, setPhone] = useState("+15550001111");
+  const [token, setToken] = useState(() => localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
+  const [phone, setPhone] = useState(() => localStorage.getItem(SESSION_PHONE_KEY) ?? "+15550001111");
   const [notice, setNotice] = useState("Welcome.");
 
   const [profile, setProfile] = useState<Profile>(emptyProfile);
@@ -214,7 +216,16 @@ function App() {
       return;
     }
     setToken(payload.token);
+    localStorage.setItem(SESSION_TOKEN_KEY, payload.token);
+    localStorage.setItem(SESSION_PHONE_KEY, phone);
     setNotice("You are in.");
+  }
+
+  function signOut() {
+    setToken("");
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+    localStorage.removeItem(SESSION_PHONE_KEY);
+    setNotice("Signed out.");
   }
 
   async function loadAll() {
@@ -227,6 +238,12 @@ function App() {
       fetch(`${apiBase}/pulse/history`, { headers }),
       fetch(`${apiBase}/social/notifications`, { headers })
     ]);
+
+    if (profileRes.status === 401) {
+      signOut();
+      setNotice("Session expired. Please sign in again.");
+      return;
+    }
 
     if (!profileRes.ok || !friendsRes.ok || !discoveryRes.ok || !recRes.ok || !historyRes.ok || !notificationsRes.ok) {
       setNotice("Something did not load. Please try again.");
@@ -447,6 +464,10 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    localStorage.setItem(SESSION_PHONE_KEY, phone);
+  }, [phone]);
+
   return (
     <main className="app-shell">
       <div className="app-surface">
@@ -474,6 +495,14 @@ function App() {
           </section>
         ) : (
           <>
+            <section className="page">
+              <div className="row">
+                <p className="subtle">Signed in as {phone}</p>
+                <button type="button" className="secondary compact" onClick={signOut}>
+                  Log out
+                </button>
+              </div>
+            </section>
             <section className="page">
               {screen === "checkin" ? (
                 <>

@@ -14,12 +14,19 @@ type FriendRow = {
 type DiscoveryRow = {
   id: string;
   name: string | null;
-  altruism_score: string;
+  phone: string;
+  support_received: string;
 };
 
 type DiscoveryNudgeRow = {
   receiver_id: string;
 };
+
+function normalizePhoneKey(phone: string): string {
+  const digits = phone.replace(/\D+/g, "");
+  if (!digits) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
 
 type FriendProfileRow = {
   id: string;
@@ -145,7 +152,24 @@ socialRouter.post("/friends/add", requireAuth, async (req: Request, res: Respons
     return res.status(400).json({ error: "phone is required" });
   }
 
-  const found = await query<{ id: string }>(`SELECT id FROM users WHERE phone = $1 LIMIT 1`, [phone]);
+  const friendPhoneDigits = phone.replace(/\D+/g, "");
+  const friendPhoneKey = friendPhoneDigits.length > 10 ? friendPhoneDigits.slice(-10) : friendPhoneDigits;
+  const found = await query<{ id: string }>(
+    `
+      SELECT id
+      FROM users
+      WHERE (
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(phone, '\\D', '', 'g')
+        END
+      ) = $1
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [friendPhoneKey]
+  );
   if (found.rowCount === 0) {
     return res.status(404).json({ error: "No user found with that phone number" });
   }
@@ -229,37 +253,96 @@ socialRouter.get("/text-eligibility/:friendId", requireAuth, async (req: Request
 socialRouter.get("/discovery", async (_req, res) => {
   const result = await query<DiscoveryRow>(
     `
+      WITH canonical_users AS (
+        SELECT
+          (ARRAY_AGG(id ORDER BY updated_at DESC, created_at DESC))[1] AS id,
+          COALESCE((ARRAY_AGG(NULLIF(name, '') ORDER BY updated_at DESC, created_at DESC))[1], 'Anonymous') AS name,
+          CASE
+            WHEN LENGTH(REGEXP_REPLACE(phone, '\\D', '', 'g')) > 10
+              THEN RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 10)
+            ELSE REGEXP_REPLACE(phone, '\\D', '', 'g')
+          END AS phone_digits,
+          (ARRAY_AGG(phone ORDER BY updated_at DESC, created_at DESC))[1] AS phone
+        FROM users
+        WHERE REGEXP_REPLACE(phone, '\\D', '', 'g') <> ''
+        GROUP BY
+          CASE
+            WHEN LENGTH(REGEXP_REPLACE(phone, '\\D', '', 'g')) > 10
+              THEN RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 10)
+            ELSE REGEXP_REPLACE(phone, '\\D', '', 'g')
+          END
+      ),
+      canonical_nudges AS (
+        SELECT
+          CASE
+            WHEN LENGTH(REGEXP_REPLACE(s.phone, '\\D', '', 'g')) > 10
+              THEN RIGHT(REGEXP_REPLACE(s.phone, '\\D', '', 'g'), 10)
+            ELSE REGEXP_REPLACE(s.phone, '\\D', '', 'g')
+          END AS sender_digits,
+          CASE
+            WHEN LENGTH(REGEXP_REPLACE(r.phone, '\\D', '', 'g')) > 10
+              THEN RIGHT(REGEXP_REPLACE(r.phone, '\\D', '', 'g'), 10)
+            ELSE REGEXP_REPLACE(r.phone, '\\D', '', 'g')
+          END AS receiver_digits
+        FROM nudges n
+        JOIN users s ON s.id = n.sender_id
+        JOIN users r ON r.id = n.receiver_id
+      )
       SELECT
-        u.id,
-        u.name,
-        COUNT(n.id)::text AS altruism_score
-      FROM users u
-      LEFT JOIN nudges n ON n.sender_id = u.id
-      GROUP BY u.id
-      ORDER BY COUNT(n.id) DESC, u.created_at DESC
+        cu.id,
+        cu.name,
+        cu.phone,
+        COUNT(cn.receiver_digits)::text AS support_received
+      FROM canonical_users cu
+      LEFT JOIN canonical_nudges cn ON cn.receiver_digits = cu.phone_digits
+      GROUP BY cu.id, cu.name, cu.phone_digits, cu.phone
+      ORDER BY COUNT(cn.receiver_digits) DESC, cu.name ASC
       LIMIT 100
     `
   );
 
-  const mood = await query<{ user_id: string; fulfillment_score: number; created_at: string }>(
+  const mood = await query<{ phone_digits: string; fulfillment_score: number; created_at: string }>(
     `
-      SELECT DISTINCT ON (user_id) user_id, fulfillment_score, created_at
-      FROM pulse_entries
-      ORDER BY user_id, created_at DESC
+      SELECT DISTINCT ON (
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(u.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(u.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(u.phone, '\\D', '', 'g')
+        END
+      )
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(u.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(u.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(u.phone, '\\D', '', 'g')
+        END AS phone_digits,
+        pe.fulfillment_score,
+        pe.created_at
+      FROM pulse_entries pe
+      JOIN users u ON u.id = pe.user_id
+      WHERE REGEXP_REPLACE(u.phone, '\\D', '', 'g') <> ''
+      ORDER BY
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(u.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(u.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(u.phone, '\\D', '', 'g')
+        END,
+        pe.created_at DESC
     `
   );
   const moodMap = new Map<string, { score: number | null; capturedAt: string | null }>(
-    mood.rows.map((row) => [row.user_id, { score: Number(row.fulfillment_score), capturedAt: row.created_at }])
+    mood.rows.map((row) => [row.phone_digits, { score: Number(row.fulfillment_score), capturedAt: row.created_at }])
   );
 
   return res.json({
     discovery: result.rows.map((r) => ({
       id: r.id,
       name: r.name ?? "Anonymous",
-      mood_color: getMoodColorFromScore(moodMap.get(r.id)?.score ?? null),
-      latest_score: moodMap.get(r.id)?.score ?? null,
-      latest_captured_at: moodMap.get(r.id)?.capturedAt ?? null,
-      altruism_score: Number(r.altruism_score)
+      mood_color: getMoodColorFromScore(
+        moodMap.get(normalizePhoneKey(r.phone))?.score ?? null
+      ),
+      latest_score: moodMap.get(normalizePhoneKey(r.phone))?.score ?? null,
+      latest_captured_at: moodMap.get(normalizePhoneKey(r.phone))?.capturedAt ?? null,
+      altruism_score: Number(r.support_received)
     }))
   });
 });
@@ -278,6 +361,38 @@ socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Res
     return res.status(200).json({ message: "You cannot thumbs-up yourself." });
   }
 
+  const canonicalPair = await query<{ sender_key: string; receiver_key: string }>(
+    `
+      SELECT
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(s.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(s.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(s.phone, '\\D', '', 'g')
+        END AS sender_key,
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(r.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(r.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(r.phone, '\\D', '', 'g')
+        END AS receiver_key
+      FROM users s
+      JOIN users r ON r.id = $2
+      WHERE s.id = $1
+      LIMIT 1
+    `,
+    [senderId, receiverId]
+  );
+  if ((canonicalPair.rowCount ?? 0) === 0) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  const { sender_key: senderPhoneKey, receiver_key: receiverPhoneKey } = canonicalPair.rows[0];
+  if (!senderPhoneKey || !receiverPhoneKey) {
+    return res.status(400).json({ error: "Could not identify one of the users for this thumbs-up." });
+  }
+  if (senderPhoneKey === receiverPhoneKey) {
+    return res.status(200).json({ message: "You cannot thumbs-up yourself." });
+  }
+
   const receiverExists = await query<{ id: string }>(`SELECT id FROM users WHERE id = $1 LIMIT 1`, [receiverId]);
   if ((receiverExists.rowCount ?? 0) === 0) {
     return res.status(404).json({ error: "User not found." });
@@ -285,14 +400,28 @@ socialRouter.post("/discovery/nudge", requireAuth, async (req: Request, res: Res
 
   const todayResult = await query<DiscoveryNudgeRow>(
     `
-      SELECT receiver_id
-      FROM nudges
-      WHERE sender_id = $1
-        AND receiver_id = $2
-        AND nudge_day = CURRENT_DATE
+      SELECT n.receiver_id
+      FROM nudges n
+      JOIN users s ON s.id = n.sender_id
+      JOIN users r ON r.id = n.receiver_id
+      WHERE (
+        CASE
+          WHEN LENGTH(REGEXP_REPLACE(s.phone, '\\D', '', 'g')) > 10
+            THEN RIGHT(REGEXP_REPLACE(s.phone, '\\D', '', 'g'), 10)
+          ELSE REGEXP_REPLACE(s.phone, '\\D', '', 'g')
+        END
+      ) = $1
+        AND (
+          CASE
+            WHEN LENGTH(REGEXP_REPLACE(r.phone, '\\D', '', 'g')) > 10
+              THEN RIGHT(REGEXP_REPLACE(r.phone, '\\D', '', 'g'), 10)
+            ELSE REGEXP_REPLACE(r.phone, '\\D', '', 'g')
+          END
+        ) = $2
+        AND n.nudge_day = CURRENT_DATE
       LIMIT 1
     `,
-    [senderId, receiverId]
+    [senderPhoneKey, receiverPhoneKey]
   );
   if ((todayResult.rowCount ?? 0) > 0) {
     return res.status(200).json({ message: "You already gave this person a thumbs-up today." });
